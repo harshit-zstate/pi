@@ -180,12 +180,10 @@ pi --no-tool-dirs --tools-dir examples/tools "Draw a 6x6 checkerboard and descri
 
 ## Harbor
 
-[`integrations/harbor/pi_harness.py`](../../../integrations/harbor/pi_harness.py) runs a variant in [Harbor](https://github.com/laude-institute/harbor). It extends Harbor's `pi` agent, which records the run as an ATIF trajectory with images. It installs the standalone Linux binary from a [GitHub release](https://github.com/harshit-zstate/pi/releases) (x64 or arm64, by the container's architecture), uploads the variant's tool folder and system prompt, and runs `pi` with only those tools:
+[`integrations/harbor/pi_harness.py`](../../../integrations/harbor/pi_harness.py) is a standalone [Harbor](https://github.com/laude-institute/harbor) agent for a variant. It installs the standalone Linux binary from a [GitHub release](https://github.com/harshit-zstate/pi/releases) (x64 or arm64, by the container's architecture), uploads the variant's tool folder and system prompt, runs `pi --print --mode json` with only those tools, and writes the run as an ATIF trajectory with its images. See its [README](../../../integrations/harbor/README.md).
 
 ```sh
-harbor run -d <dataset> -m anthropic/claude-sonnet-4-5 \
-  --agent-import-path integrations.harbor.pi_harness:PiHarness \
+PYTHONPATH=/path/to/pi harbor run -p <task-or-dataset> -m anthropic/claude-sonnet-4-5 \
+  -a integrations.harbor.pi_harness:PiHarness \
   --ak tools_dir=./tools --ak release=v1.3.0-harness.1 --ak system_prompt=./SYSTEM.md
 ```
-
-`release` defaults to `latest`. `binary_archive=<local pi-linux-x64.tar.gz>` uploads a local build instead of downloading, and `setup_command` runs as root after upload, for tool dependencies such as `pip install -r /opt/pi-harness/tools/requirements.txt`.

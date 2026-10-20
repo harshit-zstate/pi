@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Releases build only the Linux x64 and arm64 binaries (for Docker and Harbor) and publish the GitHub Release directly instead of staging a draft across macOS and Windows runners.
+- The Harbor agent (`integrations/harbor/pi_harness.py`) is now standalone: it installs the release binary, runs pi headless with the variant's tools, and writes the ATIF trajectory itself instead of extending Harbor's built-in `pi` agent. Custom endpoints declare image input so tool images reach the model.
+
 ## [1.3.0-harness.1] - 2026-10-20
 
 ### Breaking Changes

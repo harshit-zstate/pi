@@ -10,7 +10,7 @@
 #   --skip-install       Skip npm ci
 #   --skip-build         Skip the package build
 #   --offline-model-data Build with bundled model data instead of refreshing it
-#   --platform <name>    Build only for specified platform (darwin-arm64, darwin-x64, linux-x64, linux-arm64, windows-x64, windows-arm64)
+#   --platform <name>    Build only for specified platform (darwin-arm64, darwin-x64, linux-x64, linux-arm64, windows-x64, windows-arm64); repeatable
 #   --out <dir>          Output directory (default: packages/coding-agent/binaries)
 #
 # Output:
@@ -29,7 +29,7 @@ cd "$(dirname "$0")/.."
 SKIP_INSTALL=false
 SKIP_BUILD=false
 OFFLINE_MODEL_DATA=false
-PLATFORM=""
+REQUESTED_PLATFORMS=()
 OUTPUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
@@ -47,7 +47,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --platform)
-            PLATFORM="$2"
+            REQUESTED_PLATFORMS+=("$2")
             shift 2
             ;;
         --out)
@@ -61,18 +61,18 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Validate platform if specified
-if [[ -n "$PLATFORM" ]]; then
-    case "$PLATFORM" in
+# Validate requested platforms
+for requested in "${REQUESTED_PLATFORMS[@]+"${REQUESTED_PLATFORMS[@]}"}"; do
+    case "$requested" in
         darwin-arm64|darwin-x64|linux-x64|linux-arm64|windows-x64|windows-arm64)
             ;;
         *)
-            echo "Invalid platform: $PLATFORM"
+            echo "Invalid platform: $requested"
             echo "Valid platforms: darwin-arm64, darwin-x64, linux-x64, linux-arm64, windows-x64, windows-arm64"
             exit 1
             ;;
     esac
-fi
+done
 
 if [[ -z "$OUTPUT_DIR" ]]; then
     OUTPUT_DIR="packages/coding-agent/binaries"
@@ -108,8 +108,8 @@ rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"/{darwin-arm64,darwin-x64,linux-x64,linux-arm64,windows-x64,windows-arm64}
 
 # Determine which platforms to build
-if [[ -n "$PLATFORM" ]]; then
-    PLATFORMS=("$PLATFORM")
+if [[ ${#REQUESTED_PLATFORMS[@]} -gt 0 ]]; then
+    PLATFORMS=("${REQUESTED_PLATFORMS[@]}")
 else
     PLATFORMS=(darwin-arm64 darwin-x64 linux-x64 linux-arm64 windows-x64 windows-arm64)
 fi
