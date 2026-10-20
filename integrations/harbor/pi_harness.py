@@ -12,10 +12,14 @@ Custom OpenAI-compatible endpoints work like Harbor's other agents: `-m openai/<
 `OPENAI_BASE_URL` and `OPENAI_API_KEY` set, plus `--ak model_api=openai-completions`.
 """
 
+import asyncio
 import base64
 import binascii
+import hashlib
 import json
+import os
 import shlex
+import urllib.request
 from collections.abc import Iterator
 from itertools import count
 from pathlib import Path, PurePosixPath
@@ -51,6 +55,9 @@ _REMOTE_BINARY_DIR = _REMOTE_DIR / "pi"
 # pi's config directory for the run: auth, settings, and models.json for custom endpoints.
 _REMOTE_CONFIG_DIR = PurePosixPath("/tmp/pi-harness-agent")
 _CUSTOM_PROVIDER = "harbor-endpoint"
+# Release archives are downloaded once per release on the host, then uploaded into each container.
+_CACHE_DIR = Path(os.environ.get("PI_HARNESS_CACHE", "~/.cache/pi-harness")).expanduser()
+_DOWNLOAD_ATTEMPTS = 5
 
 _ImageMediaType = Literal["image/png", "image/jpeg", "image/gif", "image/webp"]
 _IMAGE_EXTENSIONS: dict[_ImageMediaType, str] = {
@@ -127,11 +134,65 @@ class PiHarness(BaseInstalledAgent):
     def parse_version(self, stdout: str) -> str:
         return stdout.strip().splitlines()[-1].strip()
 
-    def _download_url(self, archive: str) -> str:
-        base = f"https://github.com/{RELEASE_REPOSITORY}/releases"
-        if self.options.release == "latest":
-            return f"{base}/latest/download/{archive}"
-        return f"{base}/download/{self.options.release}/{archive}"
+    # One download at a time per process, so concurrent trials share the cached archive.
+    _download_lock = asyncio.Lock()
+
+    @staticmethod
+    def _resolve_release(release: str) -> str:
+        """The tag a release name refers to; `latest` follows GitHub's redirect."""
+        if release != "latest":
+            return release
+        request = urllib.request.Request(
+            f"https://github.com/{RELEASE_REPOSITORY}/releases/latest", method="HEAD"
+        )
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return response.url.rstrip("/").rsplit("/", 1)[-1]
+
+    @staticmethod
+    def _download(url: str, path: Path) -> None:
+        """Download `url` to `path`, resuming after dropped connections."""
+        partial = path.with_name(path.name + ".partial")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        for attempt in range(1, _DOWNLOAD_ATTEMPTS + 1):
+            offset = partial.stat().st_size if partial.exists() else 0
+            request = urllib.request.Request(url, headers={"Range": f"bytes={offset}-"} if offset else {})
+            try:
+                with urllib.request.urlopen(request, timeout=120) as response:
+                    # A server that ignores Range restarts from the beginning.
+                    mode = "ab" if offset and response.status == 206 else "wb"
+                    with partial.open(mode) as file:
+                        while chunk := response.read(1 << 20):
+                            file.write(chunk)
+                partial.replace(path)
+                return
+            except OSError:
+                if attempt == _DOWNLOAD_ATTEMPTS:
+                    raise
+
+    async def _release_archive(self, arch: str) -> Path:
+        """Cached, checksum-verified `pi-linux-<arch>.tar.gz` of the configured release."""
+        async with self._download_lock:
+            tag = await asyncio.to_thread(self._resolve_release, self.options.release)
+            archive_name = f"pi-linux-{arch}.tar.gz"
+            archive = _CACHE_DIR / tag / archive_name
+            if archive.is_file():
+                return archive
+            base = f"https://github.com/{RELEASE_REPOSITORY}/releases/download/{tag}"
+            sums = _CACHE_DIR / tag / "SHA256SUMS"
+            self.logger.info(f"Downloading {base}/{archive_name} to {archive}")
+            await asyncio.to_thread(self._download, f"{base}/SHA256SUMS", sums)
+            downloaded = archive.with_name(archive_name + ".download")
+            await asyncio.to_thread(self._download, f"{base}/{archive_name}", downloaded)
+            expected = next(
+                (line.split()[0] for line in sums.read_text().splitlines() if line.endswith(f" {archive_name}")),
+                None,
+            )
+            digest = hashlib.sha256(downloaded.read_bytes()).hexdigest()
+            if expected != digest:
+                downloaded.unlink(missing_ok=True)
+                raise RuntimeError(f"{archive_name} of {tag} does not match SHA256SUMS")
+            downloaded.replace(archive)
+            return archive
 
     @override
     async def install(self, environment: BaseEnvironment) -> None:
@@ -141,26 +202,22 @@ class PiHarness(BaseInstalledAgent):
         binary_archive = self._local_path(self.options.binary_archive, "binary_archive", directory=False)
         system_prompt = self._local_path(self.options.system_prompt, "system_prompt", directory=False)
 
-        await self.ensure_system_dependencies(environment, ("curl",))
         await self.exec_as_root(environment, command=f"mkdir -p {shlex.quote(_REMOTE_DIR.as_posix())}")
         await environment.upload_dir(tools_dir, _REMOTE_TOOLS_DIR.as_posix())
         if system_prompt:
             await environment.upload_file(system_prompt, _REMOTE_SYSTEM_PROMPT.as_posix())
 
+        if binary_archive is None:
+            machine = (await self.exec_as_root(environment, command="uname -m")).stdout or ""
+            arch = "arm64" if machine.strip() in {"aarch64", "arm64"} else "x64"
+            binary_archive = await self._release_archive(arch)
         # The release archive holds a `pi/` directory with the binary and the assets it reads.
         archive_path = (_REMOTE_DIR / "pi.tar.gz").as_posix()
-        if binary_archive:
-            await environment.upload_file(binary_archive, archive_path)
-            fetch = ":"
-        else:
-            arch = '$(case "$(uname -m)" in aarch64|arm64) echo arm64;; *) echo x64;; esac)'
-            url = self._download_url("pi-linux-${ARCH}.tar.gz")
-            fetch = f'ARCH={arch}; curl -fsSL "{url}" -o {shlex.quote(archive_path)}'
+        await environment.upload_file(binary_archive, archive_path)
         await self.exec_as_root(
             environment,
             command=(
                 "set -eu; "
-                f"{fetch}; "
                 f"rm -rf {shlex.quote(_REMOTE_BINARY_DIR.as_posix())}; "
                 f"tar -xzf {shlex.quote(archive_path)} -C {shlex.quote(_REMOTE_DIR.as_posix())}; "
                 f"rm -f {shlex.quote(archive_path)}; "
