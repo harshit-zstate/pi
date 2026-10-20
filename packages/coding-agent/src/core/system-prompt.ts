@@ -3,15 +3,18 @@
  */
 
 import { getSystemMessageText } from "@earendil-works/pi-ai";
-import { getDocsPath, getExamplesPath, getReadmePath } from "../config.ts";
-import { formatSkillsForPrompt, type Skill } from "./skills.ts";
+import type { Skill } from "./skills.ts";
+
+/** Default preamble when no custom system prompt is configured. */
+export const DEFAULT_PREAMBLE =
+	"You are an agent that completes tasks using only the tools provided. Inspect the evidence with your tools before drawing conclusions, and state what you found and how you found it.";
 
 export interface BuildSystemPromptOptions {
 	/** Custom system prompt (replaces the default prefix). */
 	customPrompt?: string;
 	/** Exact full prompt replacement set by a before_agent_start handler. */
 	forceSystemPrompt?: string;
-	/** Tools to include in prompt. Default: [read, bash, edit, write]. */
+	/** Tools to include in prompt. Default: none. */
 	selectedTools?: string[];
 	/**
 	 * Selected tools whose declarations requests leave out (`prepareLoadout` hidden declarations).
@@ -22,6 +25,8 @@ export interface BuildSystemPromptOptions {
 	toolSnippets?: Record<string, string>;
 	/** Guideline bullets contributed by each tool, keyed by tool name. */
 	toolGuidelines?: Record<string, string[]>;
+	/** Group of each tool, keyed by tool name. Grouped tools are listed under their group. */
+	toolGroups?: Record<string, { name: string; description?: string }>;
 	/** Additional guideline bullets appended to the default system prompt rules. */
 	promptGuidelines?: string[];
 	/** Text appended from user configuration before project context, skills, and cwd. */
@@ -32,7 +37,7 @@ export interface BuildSystemPromptOptions {
 	cwd: string;
 	/** Pre-loaded context files. */
 	contextFiles?: Array<{ path: string; content: string }>;
-	/** Pre-loaded skills. */
+	/** Pre-loaded skills. Not listed in the prompt: there is no built-in tool to read them. */
 	skills?: Skill[];
 }
 
@@ -41,6 +46,7 @@ export type NormalizedBuildSystemPromptOptions = BuildSystemPromptOptions & {
 	hiddenTools: string[];
 	toolSnippets: Record<string, string>;
 	toolGuidelines: Record<string, string[]>;
+	toolGroups: Record<string, { name: string; description?: string }>;
 	promptGuidelines: string[];
 	appendSystemPrompt: string;
 	sections: Record<string, string>;
@@ -61,11 +67,14 @@ export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOption
 	return {
 		customPrompt: input.customPrompt,
 		forceSystemPrompt: input.forceSystemPrompt,
-		selectedTools: [...(input.selectedTools ?? ["read", "bash", "edit", "write"])],
+		selectedTools: [...(input.selectedTools ?? [])],
 		hiddenTools: [...(input.hiddenTools ?? [])],
 		toolSnippets: { ...(input.toolSnippets ?? {}) },
 		toolGuidelines: Object.fromEntries(
 			Object.entries(input.toolGuidelines ?? {}).map(([name, guidelines]) => [name, [...guidelines]]),
+		),
+		toolGroups: Object.fromEntries(
+			Object.entries(input.toolGroups ?? {}).map(([name, group]) => [name, { ...group }]),
 		),
 		promptGuidelines: [...(input.promptGuidelines ?? [])],
 		appendSystemPrompt: input.appendSystemPrompt ?? "",
@@ -99,29 +108,41 @@ function buildRules(
 		rules.push(normalized);
 	};
 
-	const hasBash = selectedTools.includes("bash");
-	const hasPowerShell = selectedTools.includes("powershell");
-	const hasGrep = selectedTools.includes("grep");
-	const hasFind = selectedTools.includes("find");
-	const hasLs = selectedTools.includes("ls");
-
-	if ((hasBash || hasPowerShell) && !hasGrep && !hasFind && !hasLs) {
-		if (hasBash && hasPowerShell) {
-			addRule("Use bash or PowerShell for file operations like listing, searching, and finding files");
-		} else if (hasPowerShell) {
-			addRule("Use PowerShell for file operations like listing, searching, and finding files");
-		} else {
-			addRule("Use bash for file operations like ls, rg, find");
-		}
-	}
-
 	for (const name of selectedTools) {
 		for (const rule of toolGuidelines[name] ?? []) addRule(rule);
 	}
 	for (const rule of promptGuidelines) addRule(rule);
 	addRule("Be concise in your responses");
-	addRule("Show file paths clearly when working with files");
 	return rules.map((rule) => `- ${rule}`).join("\n");
+}
+
+/** List tools as `- name: snippet`, ungrouped tools first, then each group under its description. */
+function renderToolList(
+	tools: string[],
+	toolSnippets: Record<string, string>,
+	toolGroups: Record<string, { name: string; description?: string }>,
+): string {
+	const ungrouped: string[] = [];
+	const groups = new Map<string, { description?: string; lines: string[] }>();
+	for (const name of tools) {
+		const line = `- ${name}: ${toolSnippets[name]}`;
+		const group = toolGroups[name];
+		if (!group) {
+			ungrouped.push(line);
+			continue;
+		}
+		let entry = groups.get(group.name);
+		if (!entry) {
+			entry = { description: group.description, lines: [] };
+			groups.set(group.name, entry);
+		}
+		entry.lines.push(line);
+	}
+	const blocks = ungrouped.length > 0 ? [ungrouped.join("\n")] : [];
+	for (const [name, { description, lines }] of groups) {
+		blocks.push([description ? `${name}: ${description}` : name, ...lines].join("\n"));
+	}
+	return blocks.join("\n\n");
 }
 
 /** Build the ordered, independently replaceable sections of the structured system prompt. */
@@ -133,12 +154,12 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		hiddenTools,
 		toolSnippets,
 		toolGuidelines,
+		toolGroups,
 		promptGuidelines,
 		appendSystemPrompt,
 		sections: customSections,
 		cwd,
 		contextFiles,
-		skills,
 	} = options;
 
 	for (const name of Object.keys(customSections)) {
@@ -152,34 +173,15 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 	if (customPrompt) {
 		promptSections.preamble = customPrompt;
 	} else {
-		promptSections.preamble =
-			"You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.";
+		promptSections.preamble = DEFAULT_PREAMBLE;
 		const visibleTools = declaredTools.filter((name) => !!toolSnippets[name]);
-		const tools =
-			visibleTools.length > 0 ? visibleTools.map((name) => `- ${name}: ${toolSnippets[name]}`).join("\n") : "(none)";
-		promptSections.tools = `${tools}\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.`;
+		promptSections.tools =
+			visibleTools.length > 0 ? renderToolList(visibleTools, toolSnippets, toolGroups) : "(none)";
 		promptSections.rules = buildRules(declaredTools, toolGuidelines, promptGuidelines);
-		promptSections.docs = `Pi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):
-- Main documentation: ${getReadmePath()}
-- Additional docs: ${getDocsPath()}
-- Examples: ${getExamplesPath()} (extensions, custom tools, SDK)
-- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory
-- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)
-- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing
-- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)`;
 	}
 
 	if (appendSystemPrompt) promptSections.addendum = appendSystemPrompt;
 	if (contextFiles.length > 0) promptSections.project_context = renderProjectContext(contextFiles);
-	// A hidden reader is still reachable through another tool, so skills stay but the hint names no tool.
-	const readers = ["read", "bash"] as const;
-	const skillFileReadTool =
-		readers.find((tool) => declaredTools.includes(tool)) ??
-		(readers.some((tool) => selectedTools.includes(tool)) ? "indirect" : undefined);
-	if (skillFileReadTool && skills.length > 0) {
-		const skillsPrompt = formatSkillsForPrompt(skills, skillFileReadTool).trim();
-		if (skillsPrompt) promptSections.skills = skillsPrompt;
-	}
 	promptSections.cwd = cwd.replace(/\\/g, "/");
 	for (const [name, content] of Object.entries(customSections)) {
 		if (content) promptSections[name] = content;

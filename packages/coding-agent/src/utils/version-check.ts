@@ -1,14 +1,14 @@
 import { compare, valid } from "semver";
+import { RELEASE_REPOSITORY } from "../config.ts";
 import { fetchWithRetry } from "./management-http.ts";
 import { getPiUserAgent } from "./pi-user-agent.ts";
 
-const LATEST_VERSION_URL = "https://pi.dev/api/latest-version";
+/** Latest GitHub release of this build; its tag (`v1.2.3`) is the version. */
+const LATEST_VERSION_URL = `https://api.github.com/repos/${RELEASE_REPOSITORY}/releases/latest`;
 const DEFAULT_VERSION_CHECK_TIMEOUT_MS = 10000;
 
 export interface LatestPiRelease {
 	version: string;
-	packageName?: string;
-	note?: string;
 }
 
 /** Include useful errno details hidden behind Node's generic "fetch failed" error. */
@@ -59,7 +59,7 @@ export async function getLatestPiRelease(
 		{
 			headers: {
 				"User-Agent": getPiUserAgent(currentVersion),
-				accept: "application/json",
+				accept: "application/vnd.github+json",
 			},
 		},
 		{
@@ -69,22 +69,11 @@ export async function getLatestPiRelease(
 	);
 	if (!response.ok) return undefined;
 
-	const data = (await response.json()) as {
-		packageName?: unknown;
-		version?: unknown;
-		note?: unknown;
-	};
-	if (typeof data.version !== "string" || !data.version.trim()) {
+	const data = (await response.json()) as { tag_name?: unknown };
+	if (typeof data.tag_name !== "string" || !data.tag_name.trim()) {
 		return undefined;
 	}
-	const packageName =
-		typeof data.packageName === "string" && data.packageName.trim() ? data.packageName.trim() : undefined;
-	const note = typeof data.note === "string" && data.note.trim() ? data.note.trim() : undefined;
-	return {
-		version: data.version.trim(),
-		packageName,
-		...(note ? { note } : {}),
-	};
+	return { version: data.tag_name.trim().replace(/^v/, "") };
 }
 
 export async function getLatestPiVersion(

@@ -36,6 +36,8 @@ export interface Args {
 	extensions?: string[];
 	noExtensions?: boolean;
 	noMcp?: boolean;
+	toolDirs?: string[];
+	noToolDirs?: boolean;
 	print?: boolean;
 	export?: string;
 	noSkills?: boolean;
@@ -190,6 +192,11 @@ export function parseArgs(args: string[]): Args {
 			result.noExtensions = true;
 		} else if (arg === "--no-mcp") {
 			result.noMcp = true;
+		} else if (arg === "--tools-dir" && i + 1 < args.length) {
+			result.toolDirs = result.toolDirs ?? [];
+			result.toolDirs.push(args[++i]);
+		} else if (arg === "--no-tool-dirs") {
+			result.noToolDirs = true;
 		} else if (arg === "--skill" && i + 1 < args.length) {
 			result.skills = result.skills ?? [];
 			result.skills.push(args[++i]);
@@ -281,7 +288,7 @@ export function printHelp(extensionFlags?: ExtensionFlag[]): void {
 					})
 					.join("\n")}\n`
 			: "";
-	console.log(`${chalk.bold(APP_NAME)} - AI coding assistant with read, bash, edit, write tools
+	console.log(`${chalk.bold(APP_NAME)} - agent harness whose tools come from tool folders
 
 ${chalk.bold("Usage:")}
   ${APP_NAME} [options] [--] [@files...] [messages...]
@@ -301,7 +308,7 @@ ${chalk.bold("Options:")}
   --provider <name>              Provider to search for --model (requires --model)
   --model <pattern>              Model pattern or ID (supports "provider/id" and optional ":<thinking>")
   --api-key <key>                API key (defaults to env vars)
-  --system-prompt <text>         System prompt (default: coding assistant prompt)
+  --system-prompt <text>         System prompt (default: generic tool-using agent prompt)
   --append-system-prompt <text>  Append text or file contents to the system prompt (can be used multiple times)
   --mode <mode>                  Output mode: text (default), json, or rpc
   --print, -p                    Non-interactive mode: process prompt and exit
@@ -315,13 +322,13 @@ ${chalk.bold("Options:")}
   --name, -n <name>              Set session display name
   --models <patterns>            Comma-separated model patterns for Ctrl+P cycling
                                  Supports globs (anthropic/*, *sonnet*) and fuzzy matching
-  --no-tools, -nt                Disable all tools by default (built-in and extension)
-  --no-builtin-tools, -nbt       Disable built-in tools by default but keep extension/custom tools enabled
+  --tools-dir <dir>              Load tools from <dir>/<group>/<tool>/info.yml (can be used multiple times)
+  --no-tool-dirs                 Skip the default tool folders (~/${CONFIG_DIR_NAME}/agent/tools, .pi/tools, PI_TOOLS_DIR)
+  --no-tools, -nt                Disable all tools by default (tool-folder and extension)
+  --no-builtin-tools, -nbt       Disable tool-folder tools by default but keep extension/custom tools enabled
   --tools, -t <tools>            Comma-separated allowlist of tool names or patterns (*) to enable
-                                 Keeps MCP tools unless an entry starts with mcp__
                                  Only +name/-name entries add to or remove from the defaults
   --exclude-tools, -xt <tools>   Comma-separated denylist of tool names or patterns (*) to disable
-                                 Applies to all tools, MCP tools included
   --thinking <level>             Set thinking level: off, minimal, low, medium, high, xhigh, max
   --extension, -e <path>         Load an extension file or builtin:<name> (can be used multiple times)
   --no-extensions, -ne           Disable extension discovery and built-in extensions (explicit -e paths still work)
@@ -357,20 +364,20 @@ ${chalk.bold("Examples:")}
   # Interactive mode
   ${APP_NAME}
 
-  # Interactive mode with initial prompt
-  ${APP_NAME} "List all .ts files in src/"
+  # Interactive mode with tools from a folder
+  ${APP_NAME} --tools-dir ./tools "Inspect the study in ./case"
 
   # Include files in initial message
   ${APP_NAME} @prompt.md @image.png "What color is the sky?"
 
   # Non-interactive mode (process and exit)
-  ${APP_NAME} -p "List all .ts files in src/"
+  ${APP_NAME} -p --tools-dir ./tools "Inspect the study in ./case"
 
   # Prompt beginning with a dash
   ${APP_NAME} -p -- "- Summarize these points"
 
   # Multiple messages (interactive)
-  ${APP_NAME} "Read package.json" "What dependencies do we have?"
+  ${APP_NAME} "List the series" "Which one shows the lesion?"
 
   # Continue previous session
   ${APP_NAME} --continue "What did we discuss?"
@@ -399,17 +406,11 @@ ${chalk.bold("Examples:")}
   # Start with a specific thinking level
   ${APP_NAME} --thinking high "Solve this complex problem"
 
-  # Read-only mode (no file modifications possible)
-  ${APP_NAME} --tools read,grep,find,ls -p "Review the code in src/"
-
-  # Add codemode to the default tools
-  ${APP_NAME} --tools +codemode
-
-  # Codemode with only the tools of one MCP server
-  ${APP_NAME} --tools read,bash,codemode,'mcp__radius__*'
+  # Only some tools
+  ${APP_NAME} --tools 'view_*,list_series' -p "Describe the first series"
 
   # Disable one tool while keeping the rest available
-  ${APP_NAME} --exclude-tools ask_question
+  ${APP_NAME} --exclude-tools mark_finding
 
   # Export a session file to HTML
   ${APP_NAME} --export ~/${CONFIG_DIR_NAME}/agent/sessions/--path--/session.jsonl
@@ -465,15 +466,6 @@ ${chalk.bold("Environment Variables:")}
   PI_OFFLINE                       - Disable startup network operations when set to 1/true/yes
   PI_TELEMETRY                     - Override install telemetry when set to 1/true/yes or 0/false/no
   PI_SHARE_VIEWER_URL              - Base URL for /share command (default: https://pi.dev/session/)
-
-${chalk.bold("Built-in Tool Names:")}
-  read       - Read file contents
-  bash       - Execute bash commands
-  powershell - Execute PowerShell commands on Windows
-  edit       - Edit files with find/replace
-  write      - Write files (creates/overwrites)
-  grep       - Search file contents (read-only, off by default)
-  find       - Find files by glob pattern (read-only, off by default)
-  ls         - List directory contents (read-only, off by default)
+  PI_TOOLS_DIR                     - Extra tool folder roots, separated like PATH
 `);
 }

@@ -25,8 +25,6 @@
  * `"auth": { "provider": "<provider>" }` sends the token of a `/login` provider instead. Project files
  * cannot use it, so a repository cannot pick where the credential goes.
  *
- * The top-level `autoEnableCodemode` (default true) activates the codemode tool when a server
- * with `codemode` exposure connects. A project value overrides the global one.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -64,8 +62,6 @@ export interface McpServerEntry {
 
 export interface LoadedMcpConfig {
 	servers: McpServerEntry[];
-	/** Activate the codemode tool when `codemode` servers connect. Default: true. */
-	autoEnableCodemode?: boolean;
 	errors: string[];
 	/** The project `mcp.json` when the project is trusted, where `/mcp` saves project overrides. */
 	projectConfig?: string;
@@ -84,7 +80,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 interface McpConfigState {
 	servers: Map<string, McpServerEntry>;
-	autoEnableCodemode?: boolean;
 	errors: string[];
 }
 
@@ -102,8 +97,6 @@ function readConfigFile(path: string, scope: "global" | "project", state: McpCon
 		errors.push(`${path}: expected an object with an "mcpServers" object`);
 		return;
 	}
-	if (typeof parsed.autoEnableCodemode === "boolean") state.autoEnableCodemode = parsed.autoEnableCodemode;
-	else if (parsed.autoEnableCodemode !== undefined) errors.push(`${path}: autoEnableCodemode must be a boolean`);
 	for (const [name, value] of Object.entries(parsed.mcpServers ?? {})) {
 		if (scope === "project" && isRecord(value) && isOverride(value)) {
 			const base = servers.get(name);
@@ -149,13 +142,12 @@ export function loadMcpConfig(options: { agentDir: string; cwd: string; projectT
 	if (projectConfig) readConfigFile(projectConfig, "project", state);
 	return {
 		servers: [...state.servers.values()],
-		...(state.autoEnableCodemode === undefined ? {} : { autoEnableCodemode: state.autoEnableCodemode }),
 		errors: state.errors,
 		...(projectConfig ? { projectConfig } : {}),
 	};
 }
 
-/** Settings `/mcp` changes. `enabled: true` and `exposure: "codemode"` are the defaults and remove the key. */
+/** Settings `/mcp` changes. `enabled: true` and `exposure: "direct"` are the defaults and remove the key. */
 export interface McpServerConfigPatch {
 	enabled?: boolean;
 	exposure?: McpExposure;
@@ -185,7 +177,7 @@ export function updateMcpServerConfig(
 			else server.enabled = patch.enabled;
 		}
 		if (patch.exposure !== undefined) {
-			if (patch.exposure === "codemode" && !keepDefaults) delete server.exposure;
+			if (patch.exposure === "direct" && !keepDefaults) delete server.exposure;
 			else server.exposure = patch.exposure;
 		}
 		return true;

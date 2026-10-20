@@ -23,7 +23,6 @@ import { createExtensionRuntime, loadExtensionFromFactory } from "../src/core/ex
 import type { ResourceLoader } from "../src/core/resource-loader.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
-import { createCodingTools } from "../src/index.ts";
 
 /**
  * API key for authenticated tests. Tests using this should be wrapped in
@@ -260,7 +259,7 @@ export async function createTestSession(options: TestSessionOptions = {}): Promi
 		initialState: {
 			model,
 			systemPrompt: options.systemPrompt ?? "You are a helpful assistant. Be extremely concise.",
-			tools: createCodingTools(process.cwd()),
+			tools: [],
 		},
 		streamFn: streamSimple,
 	});
@@ -332,4 +331,37 @@ export function buildTestTree(
 	}
 
 	return ids;
+}
+
+/** Tool-folder stand-ins for pi's former built-in tools: name, prompt snippet, and active by default. */
+const LEGACY_TOOLS: ReadonlyArray<readonly [name: string, snippet: string, active: boolean]> = [
+	["read", "Read file contents", true],
+	["bash", "Execute bash commands (ls, grep, find, etc.)", true],
+	["edit", "Make precise file edits with exact text replacement", true],
+	["write", "Create or overwrite files", true],
+	["grep", "Search file contents for patterns", false],
+	["find", "Find files by glob pattern", false],
+	["ls", "List directory contents", false],
+	["powershell", "Execute PowerShell commands", false],
+];
+
+/**
+ * Write a tool folder root with tools named like pi's former built-ins (`read`, `bash`, `edit`, `write`
+ * active; `grep`, `find`, `ls`, `powershell` inactive), for tests of tool selection. Each tool
+ * returns `<name> ok`. Returns the root, for `toolDirs`.
+ */
+export function writeLegacyToolFolders(root: string): string {
+	const groupDir = join(root, "legacy");
+	mkdirSync(groupDir, { recursive: true });
+	writeFileSync(join(groupDir, "group_info.yml"), `tools: [${LEGACY_TOOLS.map(([name]) => name).join(", ")}]\n`);
+	for (const [name, snippet, active] of LEGACY_TOOLS) {
+		const toolDir = join(groupDir, name);
+		mkdirSync(toolDir, { recursive: true });
+		writeFileSync(
+			join(toolDir, "info.yml"),
+			`description: ${snippet}\n${active ? "" : "default_active: false\n"}parameters:\n  type: object\n  properties: {}\n`,
+		);
+		writeFileSync(join(toolDir, "impl.ts"), `export default () => "${name} ok";\n`);
+	}
+	return root;
 }

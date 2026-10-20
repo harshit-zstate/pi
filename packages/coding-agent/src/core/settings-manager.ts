@@ -29,8 +29,6 @@ import type {
 export type {
 	BranchSummarySettings,
 	CacheWarmingMode,
-	CodemodeMode,
-	CodemodeSettings,
 	CompactionModelOverride,
 	CompactionSettings,
 	DefaultProjectTrust,
@@ -81,9 +79,6 @@ function deepMergeObjects(base: Record<string, unknown>, overrides: Record<strin
 	return result;
 }
 
-/** Tools enabled at startup when `defaultTools` does not change them. */
-export const DEFAULT_TOOL_NAMES: readonly string[] = ["read", "bash", "edit", "write"];
-
 /** Whether a tool selection entry is a `+name` or `-name` modifier. */
 export function isToolModifier(entry: unknown): boolean {
 	return typeof entry === "string" && (entry.startsWith("+") || entry.startsWith("-"));
@@ -131,12 +126,12 @@ function mergeDefaultTools(base: string[] | undefined, overrides: string[] | und
 }
 
 /**
- * Resolve a merged `defaultTools` list: plain names replace `DEFAULT_TOOL_NAMES`, then `+name` adds
- * and `-name` removes a tool, in list order.
+ * Resolve a merged `defaultTools` list: plain names replace `base` (the tools enabled when
+ * `defaultTools` does not change them), then `+name` adds and `-name` removes a tool, in list order.
  */
-function resolveDefaultTools(entries: string[]): string[] {
+function resolveDefaultTools(entries: string[], base: readonly string[]): string[] {
 	const plain = entries.filter((entry) => !isToolModifier(entry));
-	return applyToolModifiers(plain.length > 0 || entries.length === 0 ? plain : DEFAULT_TOOL_NAMES, entries);
+	return applyToolModifiers(plain.length > 0 || entries.length === 0 ? plain : base, entries);
 }
 
 /** Deep merge settings: project/overrides take precedence, nested objects merge recursively */
@@ -1136,6 +1131,10 @@ export class SettingsManager {
 		});
 	}
 
+	getToolDirs(): string[] {
+		return [...(this.settings.toolDirs ?? [])];
+	}
+
 	getPromptTemplatePaths(): string[] {
 		return [...(this.settings.prompts ?? [])];
 	}
@@ -1340,11 +1339,14 @@ export class SettingsManager {
 		return this.settings.enabledModels;
 	}
 
-	/** The resolved `defaultTools` selection, or undefined when no settings layer sets it. */
-	getDefaultTools(): string[] | undefined {
+	/**
+	 * The resolved `defaultTools` selection, or undefined when no settings layer sets it. `base` is the
+	 * selection that `+name`/`-name` entries modify: every tool loaded from tool folders.
+	 */
+	getDefaultTools(base: readonly string[] = []): string[] | undefined {
 		const tools = this.settings.defaultTools;
 		if (tools === undefined) return undefined;
-		return resolveDefaultTools(Array.isArray(tools) ? tools.filter((tool) => typeof tool === "string") : []);
+		return resolveDefaultTools(Array.isArray(tools) ? tools.filter((tool) => typeof tool === "string") : [], base);
 	}
 
 	setEnabledModels(patterns: string[] | undefined): void {

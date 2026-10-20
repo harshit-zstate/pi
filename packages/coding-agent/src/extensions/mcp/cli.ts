@@ -65,7 +65,7 @@ Options for add:
                           Fixed OAuth callback port
   --oauth-client-name <name>
                           Client name sent when registering with the OAuth server
-  --exposure <mode>       codemode (default), deferred, direct, or hidden
+  --exposure <mode>       direct (default), deferred, or hidden
   --description <text>    What the server offers, shown in the system prompt
 
 Other options:
@@ -447,7 +447,7 @@ async function list(
 				source: entry.source,
 				...(entry.override ? { override: entry.override } : {}),
 				enabled: entry.config.enabled !== false,
-				exposure: entry.config.exposure ?? "codemode",
+				exposure: entry.config.exposure ?? "direct",
 				transport: describeTransport(entry),
 				state: "disabled",
 				tools: [],

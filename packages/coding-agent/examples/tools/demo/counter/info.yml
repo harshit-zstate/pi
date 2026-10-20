@@ -1,0 +1,13 @@
+description: Count calls in this run; state lives in one long-lived worker process.
+parameters:
+  type: object
+  properties:
+    label: { type: string, description: Counter name }
+  required: [label]
+output:
+  description: The counter's new value.
+# persistent: one process per run, started on the first call. Requests and responses are JSON lines
+# carrying an "id": {"id", "input", "callId", "cwd", "toolDir"} -> {"id", "result"} or {"id", "error"}.
+# Use it for impls with slow startup (numpy, pydicom, openslide) or state kept across calls.
+runtime: persistent
+timeout_ms: 10000

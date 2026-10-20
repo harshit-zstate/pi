@@ -1,67 +1,31 @@
-<p align="center">
-  <a href="https://pi.dev">
-    <img alt="pi logo" src="https://pi.dev/logo-auto.svg" width="128">
-  </a>
-</p>
-<p align="center">
-  <a href="https://discord.com/invite/3cU7Bz4UPx"><img alt="Discord" src="https://img.shields.io/badge/discord-community-5865F2?style=flat-square&logo=discord&logoColor=white" /></a>
-  <a href="https://www.npmjs.com/package/@earendil-works/pi-coding-agent"><img alt="npm" src="https://img.shields.io/npm/v/@earendil-works/pi-coding-agent?style=flat-square" /></a>
-</p>
+# Pi harness
 
-> New issues and PRs from new contributors are auto-closed by default. Maintainers review auto-closed issues daily. See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-# Pi
-
-Pi is a minimal, extensible agent harness that you can make your own.
-
-Adapt Pi to your workflows, not the other way around. Customize Pi with [extensions](packages/coding-agent/docs/extensions.md), [skills](packages/coding-agent/docs/skills.md), [prompt templates](packages/coding-agent/docs/prompt-templates.md), and [themes](packages/coding-agent/docs/themes.md). Bundle them as [Pi packages](packages/coding-agent/docs/packages.md) and share via npm or git.
-
-Pi ships with powerful defaults but skips features like sub-agents and plan mode. Ask Pi to build what you want, or install a package that does it your way.
-
-Use Pi [interactively](packages/coding-agent/docs/usage.md), automate it in [print or JSON mode](packages/coding-agent/docs/cli.md), control it over [RPC](packages/coding-agent/docs/rpc.md), or build apps with the [Pi TypeScript SDK](packages/coding-agent/docs/sdk.md). See [OpenClaw](https://github.com/OpenClaw/OpenClaw) for a real-world integration.
-
-## Getting started
-
-Install the command-line interface:
+A fork of [Pi](https://github.com/earendil-works/pi) used as the base for diagnostic agents (pi-radio, pi-path). It keeps Pi's agent loop, reasoning, providers, sessions, TUI, CLI, RPC, SDK, and MCP support, and removes the built-in coding tools (`read`, `bash`, `edit`, `write`, ...). The model gets only the tools you register as [tool folders](packages/coding-agent/docs/tools.md): an `info.yml` plus an implementation in TypeScript or any executable language, returning text and images. A variant is a set of tool folders and a system prompt.
 
 ```bash
-curl -fsSL https://pi.dev/install.sh | sh
+pi --no-tool-dirs --tools-dir ./tools -p "Describe the first series of the study in ./case"
 ```
 
-On Windows:
+See [Tool Folders](packages/coding-agent/docs/tools.md), [examples/tools](packages/coding-agent/examples/tools), and [integrations/harbor](integrations/harbor) for running a variant in Harbor.
 
-```shell
-powershell -c "irm https://pi.dev/install.ps1 | iex"
-```
+## Install
 
-The installer pins all dependencies and updates Pi with `pi update`. Alternatively, install directly with npm, which does not pin transitive dependencies:
+Releases are published on [GitHub Releases](https://github.com/harshit-zstate/pi/releases), not npm:
 
-```bash
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent
-```
+- `pi-<platform>.tar.gz` / `.zip`: standalone binaries (no Node.js needed). Unpack and put `pi` on `PATH`.
+- `*.tgz`: npm tarballs of every package. Install them together with `npm install -g --ignore-scripts <tarballs...>` (Node.js 22.19 or newer).
 
-Pi requires Node.js 22.19 or newer. The macOS, Linux, and Windows installers can install it if needed. Pi does not require dependency lifecycle scripts for a normal npm installation.
+`pi update` checks the latest GitHub release and links to it.
 
-Start Pi in the directory where you want it to work:
-
-```bash
-cd /path/to/project
-pi
-```
-
-For a built-in AI provider, run `/login` inside Pi to connect a subscription or API key. Then give Pi a task.
-
-See the [documentation](https://pi.dev/docs/latest) for full setup and usage instructions, or [visit pi.dev](https://pi.dev) for demos.
+For a built-in AI provider, run `/login` inside Pi to connect a subscription or API key, or set the provider's API key environment variable.
 
 ## Run with Nix
 
 ```bash
-nix run github:earendil-works/pi/stable
+nix run github:harshit-zstate/pi/stable
 ```
 
-`stable` points at the latest release. Install it with `nix profile add github:earendil-works/pi/stable` and update with `nix profile upgrade pi`. Use a release tag such as `github:earendil-works/pi/v1.0.0` to pin a version, or `github:earendil-works/pi` for unreleased changes on `main`. Nix builds Pi from source.
-
-Supports ARM64 and x86-64 on Linux and macOS. Use `nix build .` or `nix run .` to build or run your checkout.
+`stable` points at the latest release. Use a release tag such as `github:harshit-zstate/pi/v1.3.1` to pin a version, or `github:harshit-zstate/pi` for unreleased changes on `main`. Nix builds Pi from source.
 
 Nix builds are offline, so the bundled model data comes from a pi.dev model catalog revision pinned in `nix/model-catalog.json`. At runtime, Pi still overlays newer catalog data from pi.dev as usual. The Nix workflow replaces the pin on `main` when it no longer matches the checkout, for example after a provider is added or gains a new model type. To refresh it by hand:
 
@@ -80,7 +44,8 @@ This monorepo contains the Pi CLI and its supporting libraries.
 | **[@earendil-works/pi-ai](packages/ai)** | Unified multi-provider LLM API (OpenAI, Anthropic, Google, etc.) |
 | **[@earendil-works/pi-durable](packages/durable)** | Durable conversation, task, and document runtime |
 | **[@earendil-works/pi-agent-core](packages/agent)** | Agent runtime with tool calling and state management |
-| **[@earendil-works/pi-coding-agent](packages/coding-agent)** | Interactive coding agent CLI |
+| **[@earendil-works/pi-coding-agent](packages/coding-agent)** | Agent CLI, TUI, SDK, and tool-folder registry |
+| **[@earendil-works/pi-mcp](packages/mcp)** | Model Context Protocol client used by the built-in MCP support |
 | **[@earendil-works/pi-tui](packages/tui)** | Terminal UI library with differential rendering |
 
 For Slack/chat automation and workflows see [earendil-works/pi-chat](https://github.com/earendil-works/pi-chat).
@@ -89,9 +54,8 @@ For Slack/chat automation and workflows see [earendil-works/pi-chat](https://git
 
 Pi does not include a built-in permission system for restricting filesystem, process, network, or credential access. By default, it runs with the permissions of the user and process that launched it.
 
-If you need stronger boundaries, containerize or sandbox Pi. See [packages/coding-agent/docs/containerization.md](packages/coding-agent/docs/containerization.md) for three patterns:
+If you need stronger boundaries, containerize or sandbox Pi. See [packages/coding-agent/docs/containerization.md](packages/coding-agent/docs/containerization.md) for two patterns:
 
-- **Gondolin extension**: keep `pi` and provider auth on the host while routing built-in tools and `!` commands into a local Linux micro-VM.
 - **Plain Docker**: run the whole `pi` process in a local container for simple isolation.
 - **OpenShell**: run the whole `pi` process in a policy-controlled sandbox.
 

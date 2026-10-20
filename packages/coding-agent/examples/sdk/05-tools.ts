@@ -1,48 +1,41 @@
 /**
  * Tools Configuration
  *
- * Use tool names to choose which built-in tools are enabled.
+ * Tools come from tool folders: `<root>/<group>/<tool>/info.yml` plus an impl. Without options,
+ * pi loads `~/.pi/agent/tools`, `<cwd>/.pi/tools` (trusted projects), `PI_TOOLS_DIR`, and the
+ * `toolDirs` setting. See docs/tools.md and examples/tools/.
  *
- * Tool names are matched against all available tools. If you use a custom `cwd`,
- * createAgentSession() applies that cwd when it builds the actual built-in tools.
- *
- * For custom tools, see 06-extensions.ts - custom tools are registered via the
- * extensions system using pi.registerTool().
+ * For tools defined in code, see 06-extensions.ts (pi.registerTool()) or the `customTools` option.
  */
 
+import { join } from "node:path";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 
-// Read-only mode (no edit/write)
-const { session: readOnlySession } = await createAgentSession({
-	tools: ["read", "grep", "find", "ls"],
+const demoTools = join(import.meta.dirname, "../tools");
+
+// Only the demo tool folder, none of the default roots
+const { session: demoSession } = await createAgentSession({
+	toolDirs: [demoTools],
+	defaultToolDirs: false,
 	sessionManager: SessionManager.inMemory(),
 });
-console.log("Read-only session created");
-readOnlySession.dispose();
+console.log("Tools:", demoSession.getActiveToolNames().join(", "));
+demoSession.dispose();
 
-// Custom tool selection
-const { session: customToolsSession } = await createAgentSession({
-	tools: ["read", "bash", "grep"],
+// Allowlist: only the named tools (patterns with * work too)
+const { session: allowlistSession } = await createAgentSession({
+	toolDirs: [demoTools],
+	tools: ["echo", "checker*"],
 	sessionManager: SessionManager.inMemory(),
 });
-console.log("Custom tools session created");
-customToolsSession.dispose();
+console.log("Allowlisted tools:", allowlistSession.getActiveToolNames().join(", "));
+allowlistSession.dispose();
 
-// With custom cwd
-const customCwd = "/path/to/project";
-const { session: customCwdSession } = await createAgentSession({
-	cwd: customCwd,
-	tools: ["read", "bash", "edit", "write"],
-	sessionManager: SessionManager.inMemory(customCwd),
+// Denylist: everything except the named tools
+const { session: denylistSession } = await createAgentSession({
+	toolDirs: [demoTools],
+	excludeTools: ["counter"],
+	sessionManager: SessionManager.inMemory(),
 });
-console.log("Custom cwd session created");
-customCwdSession.dispose();
-
-// Or pick specific tools for custom cwd
-const { session: specificToolsSession } = await createAgentSession({
-	cwd: customCwd,
-	tools: ["read", "bash", "grep"],
-	sessionManager: SessionManager.inMemory(customCwd),
-});
-console.log("Specific tools with custom cwd session created");
-specificToolsSession.dispose();
+console.log("Without counter:", denylistSession.getActiveToolNames().join(", "));
+denylistSession.dispose();

@@ -41,27 +41,27 @@ export function isMcpToolName(name: string): boolean {
 }
 
 /**
- * - `codemode`: tools are callable from codemode scripts but neither declared to the model nor
- *   listed in the codemode description, which lists only the server's namespace. Scripts find them
- *   with `searchTools()`. `codemode-deferred` is accepted as an alias.
+ * - `direct`: tools are declared to the model like any other tool.
  * - `deferred`: not declared to the model until the `tool_search` tool loads them; the model then
- *   calls them directly. Does not need codemode.
- * - `direct`: tools are declared to the model like any other tool (and callable from codemode).
+ *   calls them directly. Keeps servers with many tools out of the context until needed.
  * - `hidden`: tools are registered but unreachable.
  */
-export type McpExposure = "codemode" | "deferred" | "direct" | "hidden";
+export type McpExposure = "deferred" | "direct" | "hidden";
 
-const MCP_EXPOSURES: readonly string[] = ["codemode", "deferred", "direct", "hidden"] satisfies McpExposure[];
+const MCP_EXPOSURES: readonly string[] = ["deferred", "direct", "hidden"] satisfies McpExposure[];
 
 /** Older exposure names, accepted in configs and replaced by their current name when validated. */
-const MCP_EXPOSURE_ALIASES: Readonly<Record<string, McpExposure>> = { "codemode-deferred": "codemode" };
+const MCP_EXPOSURE_ALIASES: Readonly<Record<string, McpExposure>> = {
+	codemode: "deferred",
+	"codemode-deferred": "deferred",
+};
 
 interface McpServerConfigBase {
-	/** Default: `codemode`. */
+	/** Default: `direct`. */
 	exposure?: McpExposure;
 	/**
 	 * What the server offers, in a sentence. The `mcp_servers` system prompt section lists the server
-	 * with it, tool search ranks the server's tools by it, and codemode's `describeNamespace()` returns it.
+	 * with it, and tool search ranks the server's tools by it.
 	 */
 	description?: string;
 	/**
@@ -238,7 +238,7 @@ export function getMcpToolExposure(config: McpServerConfig, toolName: string): M
 	for (const [pattern, exposure] of Object.entries(overrides)) {
 		if (pattern.includes("*") && toolPatternRegExp(pattern).test(toolName)) return exposure;
 	}
-	return config.exposure ?? "codemode";
+	return config.exposure ?? "direct";
 }
 
 /**

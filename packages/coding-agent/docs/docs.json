@@ -106,6 +106,10 @@
           "title": "Build on Pi",
           "items": [
             {
+              "title": "Write Tool Folders",
+              "path": "tools.md"
+            },
+            {
               "title": "Build Extensions",
               "path": "extensions.md"
             },
@@ -139,10 +143,6 @@
         {
           "title": "CLI",
           "path": "cli.md"
-        },
-        {
-          "title": "Codemode",
-          "path": "codemode.md"
         },
         {
           "title": "Slash Commands",

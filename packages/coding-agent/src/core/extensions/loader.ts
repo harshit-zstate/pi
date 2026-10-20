@@ -556,14 +556,11 @@ function isCurrentCacheToken(cacheToken: ExtensionCacheToken | undefined): cache
 	);
 }
 
-async function loadExtensionModule(extensionPath: string, cacheToken?: ExtensionCacheToken) {
-	if (isCurrentCacheToken(cacheToken)) {
-		const cachedFactory = extensionCache.get(extensionPath);
-		if (cachedFactory) {
-			return cachedFactory;
-		}
-	}
-
+/**
+ * Import a TypeScript or JavaScript module with jiti and return its default export. Resolves pi
+ * packages the same way for source checkouts, npm installs, and compiled binaries.
+ */
+export async function importModuleDefault(modulePath: string): Promise<unknown> {
 	const createJitiImpl = await getCreateJiti();
 	// Compiled binaries and the bundled Node distribution use embedded modules.
 	// Source TypeScript reuses host modules and root tsconfig paths. Unbundled
@@ -577,9 +574,18 @@ async function loadExtensionModule(extensionPath: string, cacheToken?: Extension
 		moduleCache: false,
 		...resolutionOptions,
 	});
+	return jiti.import(modulePath, { default: true });
+}
 
-	const module = await jiti.import(extensionPath, { default: true });
-	const factory = module as ExtensionFactory;
+async function loadExtensionModule(extensionPath: string, cacheToken?: ExtensionCacheToken) {
+	if (isCurrentCacheToken(cacheToken)) {
+		const cachedFactory = extensionCache.get(extensionPath);
+		if (cachedFactory) {
+			return cachedFactory;
+		}
+	}
+
+	const factory = (await importModuleDefault(extensionPath)) as ExtensionFactory;
 	if (typeof factory !== "function") {
 		return undefined;
 	}

@@ -130,12 +130,8 @@ import {
 	SessionManager,
 	type SessionProjection,
 } from "./session-manager.ts";
-import {
-	applyToolModifiers,
-	type CacheWarmingMode,
-	DEFAULT_TOOL_NAMES,
-	type SettingsManager,
-} from "./settings-manager.ts";
+import { applyToolModifiers, type CacheWarmingMode, type SettingsManager } from "./settings-manager.ts";
+import { type BashOperations, createLocalBashOperations } from "./shell-operations.ts";
 import type { SlashCommandInfo } from "./slash-commands.ts";
 import { BUILTIN_PATH_PREFIX, createSyntheticSourceInfo, isSyntheticPath, type SourceInfo } from "./source-info.ts";
 import {
@@ -145,8 +141,7 @@ import {
 	type NormalizedBuildSystemPromptOptions,
 	normalizeBuildSystemPromptOptions,
 } from "./system-prompt.ts";
-import { type BashOperations, createLocalBashOperations } from "./tools/bash.ts";
-import { createAllToolDefinitions } from "./tools/index.ts";
+import type { ToolFolderRuntime } from "./tool-folders/index.ts";
 import { createToolDefinitionFromAgentTool } from "./tools/tool-definition-wrapper.ts";
 import { addUsageToTotals, combineUsage, createUsageTotals } from "./usage-totals.ts";
 import {
@@ -264,7 +259,9 @@ export interface AgentSessionConfig {
 	modelRuntime: ModelRuntime;
 	/** Keeps the prompt cache entry of the last session request warm. */
 	cacheWarmer?: Pick<CacheWarmer, "cancel" | "status" | "onAgentSettled" | "onModeChanged" | "onWarmed">;
-	/** Initial active built-in tool names. Default: [read, bash, edit, write] */
+	/** Tools loaded from tool folders. They are the base tools, all active by default. */
+	toolFolders?: ToolFolderRuntime;
+	/** Initial active tool names. Default: every tool-folder tool. */
 	initialActiveToolNames?: string[];
 	/**
 	 * Whether the initial tools come from the `defaultTools` setting. When true, a resumed session
@@ -457,6 +454,9 @@ export class AgentSession {
 	private _allowlistFiltersMcp = false;
 	private _excludedTools?: (name: string) => boolean;
 	private _baseToolsOverride?: Record<string, AgentTool>;
+	private _toolFolders?: ToolFolderRuntime;
+	/** The tool-folder runtime already prewarmed by a prompt; reload replaces the runtime. */
+	private _prewarmedToolFolders?: ToolFolderRuntime;
 	private _sessionStartEvent: SessionStartEvent;
 	private _extensionUIContext?: ExtensionUIContext;
 	private _extensionMode: ExtensionMode = "print";
@@ -507,6 +507,7 @@ export class AgentSession {
 		}
 		this._excludedTools = config.excludedToolNames ? createToolNameMatcher(config.excludedToolNames) : undefined;
 		this._baseToolsOverride = config.baseToolsOverride;
+		this._toolFolders = config.toolFolders;
 		this._sessionStartEvent = config.sessionStartEvent ?? { type: "session_start", reason: "startup" };
 
 		// Always subscribe to agent events for internal handling
@@ -1414,7 +1415,13 @@ export class AgentSession {
 			this._cacheWarmer.onWarmed = undefined;
 			this._cacheWarmer.cancel();
 		}
+		this._toolFolders?.dispose();
 		cleanupSessionResources(this.sessionId);
+	}
+
+	/** The tool-folder runtime, or undefined when the session has no tool folders. */
+	get toolFolders(): ToolFolderRuntime | undefined {
+		return this._toolFolders;
 	}
 
 	// =========================================================================
@@ -1727,6 +1734,11 @@ export class AgentSession {
 			hiddenTools: [...this._hiddenDeclarations],
 			toolSnippets,
 			toolGuidelines: Object.fromEntries(this._toolPromptGuidelines),
+			toolGroups: Object.fromEntries(
+				[...this._toolDefinitions.values()].flatMap(({ definition }) =>
+					definition.namespace ? [[definition.name, definition.namespace] as const] : [],
+				),
+			),
 		});
 	}
 
@@ -2056,6 +2068,10 @@ export class AgentSession {
 	 * @throws Error if no model selected or no API key available (when not streaming)
 	 */
 	async prompt(text: string, options?: PromptOptions): Promise<void> {
+		if (this._toolFolders && this._prewarmedToolFolders !== this._toolFolders) {
+			this._prewarmedToolFolders = this._toolFolders;
+			this._toolFolders.prewarm(this._cwd, new Set(this.getActiveToolNames()));
+		}
 		if (this._isEmittingAgentSettled) {
 			this._deferredSettledActions.push(async () => await this.prompt(text, options));
 			return;
@@ -3638,24 +3654,18 @@ export class AgentSession {
 		flagValues?: Map<string, boolean | string>;
 		includeAllExtensionTools?: boolean;
 	}): void {
-		const autoResizeImages = this.settingsManager.getImageAutoResize();
-		const shellCommandPrefix = this.settingsManager.getShellCommandPrefix();
-		const shellPath = this.settingsManager.getShellPath();
-		const baseToolDefinitions = this._baseToolsOverride
+		const baseToolDefinitions: Record<string, ToolDefinition> = this._baseToolsOverride
 			? Object.fromEntries(
 					Object.entries(this._baseToolsOverride).map(([name, tool]) => [
 						name,
 						createToolDefinitionFromAgentTool(tool),
 					]),
 				)
-			: createAllToolDefinitions(this._cwd, {
-					read: { autoResizeImages },
-					bash: { commandPrefix: shellCommandPrefix, shellPath },
-				});
+			: Object.fromEntries(
+					(this._toolFolders?.definitions ?? []).map((definition) => [definition.name, definition]),
+				);
 
-		this._baseToolDefinitions = new Map(
-			Object.entries(baseToolDefinitions).map(([name, tool]) => [name, tool as ToolDefinition]),
-		);
+		this._baseToolDefinitions = new Map(Object.entries(baseToolDefinitions));
 
 		const extensionsResult = this._resourceLoader.getExtensions();
 		if (options.flagValues) {
@@ -3677,10 +3687,11 @@ export class AgentSession {
 		this._bindExtensionCore(this._extensionRunner);
 		this._applyExtensionBindings(this._extensionRunner);
 
-		const defaultActiveToolNames = this._baseToolsOverride
-			? Object.keys(this._baseToolsOverride)
-			: ["read", "bash", "edit", "write"];
-		const baseActiveToolNames = options.activeToolNames ?? defaultActiveToolNames;
+		const baseActiveToolNames =
+			options.activeToolNames ??
+			Object.values(baseToolDefinitions)
+				.filter((definition) => definition.defaultActive !== false)
+				.map((definition) => definition.name);
 		this._refreshToolRegistry({
 			activeToolNames: baseActiveToolNames,
 			includeAllExtensionTools: options.includeAllExtensionTools,
@@ -3692,18 +3703,27 @@ export class AgentSession {
 		const previousFlagValues = oldRunner.getFlagValues();
 		await emitSessionShutdownEvent(oldRunner, { type: "session_shutdown", reason: "reload" });
 		oldRunner.invalidate();
-		const getDefaultTools = () =>
-			this._usesDefaultTools
-				? applyToolModifiers(
-						this.settingsManager.getDefaultTools() ?? DEFAULT_TOOL_NAMES,
-						this._defaultToolModifiers,
-					)
-				: [];
+		const getDefaultTools = () => {
+			if (!this._usesDefaultTools) return [];
+			const folderTools =
+				this._toolFolders?.definitions
+					.filter((definition) => definition.defaultActive !== false)
+					.map((definition) => definition.name) ?? [];
+			return applyToolModifiers(
+				this.settingsManager.getDefaultTools(folderTools) ?? folderTools,
+				this._defaultToolModifiers,
+			);
+		};
 		const previousDefaultTools = new Set(getDefaultTools());
 		await this.settingsManager.reload();
 		this.syncQueueModesFromSettings();
 		resetApiProviders();
 		await this._resourceLoader.reload();
+		if (this._toolFolders) {
+			const previousToolFolders = this._toolFolders;
+			this._toolFolders = await previousToolFolders.reload();
+			previousToolFolders.dispose();
+		}
 		// Activate tools newly added to defaultTools. Removed ones stay active, and tools disabled
 		// during the session stay disabled unless the setting newly adds them.
 		const addedDefaultTools = getDefaultTools().filter((name) => !previousDefaultTools.has(name));

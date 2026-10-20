@@ -198,7 +198,6 @@ describe("generated configuration schemas", () => {
 			{ websocketConnectTimeoutMs: -1 },
 			{ httpIdleTimeoutMs: "bogus" },
 			{ websocketConnectTimeoutMs: "30000" },
-			{ codemode: { inlineBudget: -1 } },
 		]) {
 			expect(validator.Check(invalid)).toBe(false);
 		}
@@ -211,7 +210,6 @@ describe("generated configuration schemas", () => {
 				},
 				httpIdleTimeoutMs: 0,
 				websocketConnectTimeoutMs: "disabled",
-				codemode: { inlineBudget: 0 },
 			}),
 		).toBe(true);
 	});

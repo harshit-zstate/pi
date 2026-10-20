@@ -35,8 +35,6 @@ export type {
 	AppKeybinding,
 	AutocompleteProviderFactory,
 	// Events - Tool (ToolCallEvent types)
-	BashToolCallEvent,
-	BashToolResultEvent,
 	BeforeAgentStartCustomEvent,
 	BeforeAgentStartEvent,
 	BeforeAgentStartEventResult,
@@ -65,8 +63,6 @@ export type {
 	CustomToolCallEvent,
 	CustomToolResultEvent,
 	EditorFactory,
-	EditToolCallEvent,
-	EditToolResultEvent,
 	// Message and Entry Rendering
 	EntryRenderer,
 	EntryRenderOptions,
@@ -96,14 +92,10 @@ export type {
 	ExtensionUIDialogOptions,
 	ExtensionVirtualModel,
 	ExtensionWidgetOptions,
-	FindToolCallEvent,
-	FindToolResultEvent,
 	GetActiveToolsHandler,
 	GetAllToolsHandler,
 	GetCommandsHandler,
 	GetThinkingLevelHandler,
-	GrepToolCallEvent,
-	GrepToolResultEvent,
 	InlineExtension,
 	// Events - Input
 	InputEvent,
@@ -111,8 +103,6 @@ export type {
 	InputSource,
 	KeybindingsManager,
 	LoadExtensionsResult,
-	LsToolCallEvent,
-	LsToolResultEvent,
 	MarkdownTransformContext,
 	MarkdownTransformer,
 	McpServersChangeEvent,
@@ -126,8 +116,6 @@ export type {
 	ModelSelectEvent,
 	ModelSelectSource,
 	NormalizedBuildSystemPromptOptions,
-	PowerShellToolCallEvent,
-	PowerShellToolResultEvent,
 	ProjectTrustContext,
 	ProjectTrustEvent,
 	ProjectTrustEventDecision,
@@ -137,8 +125,6 @@ export type {
 	ProviderConfig,
 	ProviderModelConfig,
 	ProviderStreamEvent,
-	ReadToolCallEvent,
-	ReadToolResultEvent,
 	// Commands
 	RegisteredCommand,
 	RegisteredTool,
@@ -206,20 +192,10 @@ export type {
 	UserBashEventResult,
 	WidgetPlacement,
 	WorkingIndicatorOptions,
-	WriteToolCallEvent,
-	WriteToolResultEvent,
 } from "./types.ts";
 // Type guards
 export {
 	defineTool,
-	isBashToolResult,
-	isEditToolResult,
-	isFindToolResult,
-	isGrepToolResult,
-	isLsToolResult,
-	isPowerShellToolResult,
-	isReadToolResult,
 	isToolCallEventType,
-	isWriteToolResult,
 } from "./types.ts";
 export { wrapRegisteredTool, wrapRegisteredTools } from "./wrapper.ts";

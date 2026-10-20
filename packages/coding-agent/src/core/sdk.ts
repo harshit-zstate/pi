@@ -17,27 +17,9 @@ import { mergeProviderAttributionHeaders } from "./provider-attribution.ts";
 import type { ResourceLoader } from "./resource-loader.ts";
 import { DefaultResourceLoader } from "./resource-loader.ts";
 import { getDefaultSessionDir, SessionManager } from "./session-manager.ts";
-import {
-	applyToolModifiers,
-	DEFAULT_TOOL_NAMES,
-	getToolListError,
-	isToolModifier,
-	SettingsManager,
-} from "./settings-manager.ts";
+import { applyToolModifiers, getToolListError, isToolModifier, SettingsManager } from "./settings-manager.ts";
 import { time } from "./timings.ts";
-import {
-	createBashTool,
-	createCodingTools,
-	createEditTool,
-	createFindTool,
-	createGrepTool,
-	createLsTool,
-	createPowerShellTool,
-	createReadOnlyTools,
-	createReadTool,
-	createWriteTool,
-	withFileMutationQueue,
-} from "./tools/index.ts";
+import { resolveToolFolderRoots, ToolFolderRuntime } from "./tool-folders/index.ts";
 import { getBranchSelection } from "./virtual-models.ts";
 
 // Preserve the pre-0.81 fallback for extensions that construct Agent instances
@@ -62,23 +44,31 @@ export interface CreateAgentSessionOptions {
 	scopedModels?: Array<{ model: Model<any>; thinkingLevel?: ThinkingLevel }>;
 
 	/**
+	 * Extra tool folder roots, each laid out as `<root>/<group>/<tool>/info.yml`. They take
+	 * precedence over the default roots (see {@link resolveToolFolderRoots}).
+	 */
+	toolDirs?: string[];
+	/**
+	 * Whether to load the default tool folder roots: `<agentDir>/tools`, `<cwd>/.pi/tools`,
+	 * `PI_TOOLS_DIR`, and the `toolDirs` setting. Default: true
+	 */
+	defaultToolDirs?: boolean;
+	/**
 	 * Optional default tool suppression mode when no explicit allowlist is provided.
 	 *
 	 * - "all": start with no tools enabled
-	 * - "builtin": disable the default built-in tools (read, bash, edit, write)
-	 *   but keep extension/custom tools enabled
+	 * - "builtin": disable the tool-folder tools but keep extension/custom tools enabled
 	 */
 	noTools?: "all" | "builtin";
 	/**
 	 * Optional allowlist of tool names or patterns, where `*` matches any characters.
 	 *
 	 * When omitted, pi uses the resolved `defaultTools` setting for the initial
-	 * selection when configured. Otherwise it enables the default built-in tools
-	 * (read, bash, edit, write). Extension/custom tools remain enabled unless
-	 * `noTools` changes that default. When provided, only matching tools are
-	 * enabled. MCP tools stay registered for codemode and tool search unless an
-	 * entry starts with `mcp__`; then only matching MCP tools are kept. An empty
-	 * list, like `noTools: "all"`, disables MCP tools too.
+	 * selection when configured. Otherwise it enables every tool-folder tool.
+	 * Extension/custom tools remain enabled unless `noTools` changes that default.
+	 * When provided, only matching tools are enabled. MCP tools registered by
+	 * extensions stay registered unless an entry starts with `mcp__`; then only
+	 * matching MCP tools are kept.
 	 *
 	 * A list of only `+name` and `-name` entries is not an allowlist: it adds tools
 	 * to or removes them from the default selection, like the `defaultTools` setting.
@@ -90,7 +80,7 @@ export interface CreateAgentSessionOptions {
 	 * provided, MCP tools included.
 	 */
 	excludeTools?: string[];
-	/** Custom tools to register (in addition to built-in tools). */
+	/** Custom tools to register (in addition to tool-folder tools). */
 	customTools?: ToolDefinition[];
 
 	/** Resource loader. When omitted, DefaultResourceLoader is used. */
@@ -132,21 +122,6 @@ export type { PromptTemplate } from "./prompt-templates.ts";
 export type { Skill } from "./skills.ts";
 export type { Tool } from "./tools/index.ts";
 
-export {
-	withFileMutationQueue,
-	// Tool factories (for custom cwd)
-	createCodingTools,
-	createReadOnlyTools,
-	createReadTool,
-	createBashTool,
-	createEditTool,
-	createWriteTool,
-	createGrepTool,
-	createFindTool,
-	createLsTool,
-	createPowerShellTool,
-};
-
 // Helper Functions
 
 function getDefaultAgentDir(): string {
@@ -182,7 +157,7 @@ function getDefaultAgentDir(): string {
  * await loader.reload();
  * const { session } = await createAgentSession({
  *   model: myModel,
- *   tools: ["read", "bash"],
+ *   toolDirs: ["./tools"],
  *   resourceLoader: loader,
  *   sessionManager: SessionManager.inMemory(),
  * });
@@ -279,7 +254,23 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 	const toolListError = options.tools ? getToolListError(options.tools) : undefined;
 	if (toolListError) throw new Error(`Invalid tools option: ${toolListError}`);
-	const defaultToolNames = options.noTools ? [] : (settingsManager.getDefaultTools() ?? DEFAULT_TOOL_NAMES);
+	const toolFolders = await ToolFolderRuntime.load(
+		resolveToolFolderRoots({
+			cwd,
+			agentDir,
+			includeDefaults: options.defaultToolDirs !== false,
+			projectTrusted: settingsManager.isProjectTrusted(),
+			settingsDirs: settingsManager.getToolDirs(),
+			cliDirs: options.toolDirs,
+		}),
+	);
+	time("toolFolders.load");
+	const folderToolNames = toolFolders.definitions
+		.filter((definition) => definition.defaultActive !== false)
+		.map((definition) => definition.name);
+	const defaultToolNames = options.noTools
+		? []
+		: (settingsManager.getDefaultTools(folderToolNames) ?? folderToolNames);
 	// A `tools` list of only `+name`/`-name` entries changes the default selection instead of
 	// replacing it, like the `defaultTools` setting.
 	const toolModifiers = options.tools?.some(isToolModifier) ? options.tools : undefined;
@@ -466,6 +457,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		scopedModels: options.scopedModels,
 		resourceLoader,
 		customTools: options.customTools,
+		toolFolders,
 		modelRuntime,
 		cacheWarmer,
 		initialActiveToolNames,

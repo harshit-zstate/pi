@@ -549,6 +549,12 @@ function buildSessionOptions(
 	if (parsed.excludeTools) {
 		options.excludeTools = [...parsed.excludeTools];
 	}
+	if (parsed.toolDirs) {
+		options.toolDirs = parsed.toolDirs.map((dir) => resolvePath(dir, process.cwd()));
+	}
+	if (parsed.noToolDirs) {
+		options.defaultToolDirs = false;
+	}
 
 	return { options, cliThinkingFromModel, diagnostics };
 }
@@ -849,8 +855,13 @@ export async function main(args: string[], options?: MainOptions) {
 			tools: sessionOptions.tools,
 			excludeTools: sessionOptions.excludeTools,
 			noTools: sessionOptions.noTools,
+			toolDirs: sessionOptions.toolDirs,
+			defaultToolDirs: sessionOptions.defaultToolDirs,
 			customTools: sessionOptions.customTools,
 		});
+		for (const { path, error } of created.session.toolFolders?.errors ?? []) {
+			diagnostics.push({ type: "error", message: `Failed to load tool folder "${path}": ${error}` });
+		}
 		const cliThinkingOverride = parsed.thinking !== undefined || cliThinkingFromModel;
 		if (created.session.model && cliThinkingOverride) {
 			created.session.setThinkingLevel(created.session.thinkingLevel);

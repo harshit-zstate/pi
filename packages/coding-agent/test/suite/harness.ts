@@ -23,12 +23,14 @@ import { convertToLlm } from "../../src/core/messages.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import type { Settings } from "../../src/core/settings-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
+import { ToolFolderRuntime } from "../../src/core/tool-folders/index.ts";
 import type { InlineExtension, ResourceLoader } from "../../src/index.ts";
 import { theme } from "../../src/modes/interactive/theme/theme.ts";
 import {
 	type CreateTestExtensionsResultInput,
 	createTestExtensionsResult,
 	createTestResourceLoader,
+	writeLegacyToolFolders,
 } from "../utilities.ts";
 
 type MessageTextPart = { type: "text"; text: string };
@@ -113,6 +115,11 @@ export interface HarnessOptions {
 	models?: FauxModelDefinition[];
 	settings?: Partial<Settings>;
 	tools?: AgentTool[];
+	/**
+	 * Tool-folder tools; the base tools when `tools` is not set. Default without `tools`: stand-ins
+	 * named like pi's former built-ins (see `writeLegacyToolFolders`).
+	 */
+	toolFolders?: ToolFolderRuntime;
 	initialActiveToolNames?: string[];
 	allowedToolNames?: string[];
 	excludedToolNames?: string[];
@@ -157,6 +164,9 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 	fauxProvider.setResponses([]);
 	const model = fauxProvider.getModel();
 	const toolMap = options.tools ? Object.fromEntries(options.tools.map((tool) => [tool.name, tool])) : undefined;
+	const toolFolders =
+		options.toolFolders ??
+		(options.tools ? undefined : await ToolFolderRuntime.load([writeLegacyToolFolders(join(tempDir, "tools"))]));
 	const withConfiguredAuth = options.withConfiguredAuth ?? true;
 	const extensionRunnerRef: { current?: ExtensionRunner } = {};
 
@@ -239,6 +249,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 		modelRuntime: getModelRuntime(modelRegistry),
 		resourceLoader,
 		baseToolsOverride: toolMap,
+		toolFolders,
 		initialActiveToolNames: options.initialActiveToolNames,
 		usesDefaultTools: options.initialActiveToolNames === undefined,
 		allowedToolNames: options.allowedToolNames,

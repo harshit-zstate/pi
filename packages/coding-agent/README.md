@@ -20,29 +20,28 @@ Pi ships with powerful defaults but skips features like sub-agents and plan mode
 
 Use Pi [interactively](docs/usage.md), automate it in [print or JSON mode](docs/cli.md), control it over [RPC](docs/rpc.md), or build apps with the [Pi TypeScript SDK](docs/sdk.md). See [OpenClaw](https://github.com/OpenClaw/OpenClaw) for a real-world integration.
 
+## Tool folders
+
+This build has no built-in tools: no `read`, `bash`, `edit`, or `write`. The model gets only the tools you register as folders, each with an `info.yml` and an implementation in TypeScript or any executable language. Tools can return text and images.
+
+```
+tools/
+  imaging/
+    group_info.yml
+    view_slice/
+      info.yml
+      impl.py
+```
+
+```bash
+pi --no-tool-dirs --tools-dir ./tools -p "Describe the first series of the study in ./case"
+```
+
+See [Tool Folders](docs/tools.md) for the format, [examples/tools](examples/tools) for one tool of each kind, and `integrations/harbor` in the repository for running a variant in Harbor.
+
 ## Getting started
 
-Install the command-line interface:
-
-```bash
-curl -fsSL https://pi.dev/install.sh | sh
-```
-
-On Windows:
-
-```shell
-powershell -c "irm https://pi.dev/install.ps1 | iex"
-```
-
-The installer pins all dependencies and updates Pi with `pi update`. Alternatively, install directly with npm, which does not pin transitive dependencies:
-
-```bash
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent
-```
-
-Pi requires Node.js 22.19 or newer. The macOS, Linux, and Windows installers can install it if needed. Pi does not require dependency lifecycle scripts for a normal npm installation.
-
-On macOS and Linux, Nix users can install the latest release with `nix profile add github:earendil-works/pi/stable`. See the [quickstart](docs/quickstart.md#1-install-pi) for updating and pinning releases.
+Download a standalone binary or the npm tarballs from [GitHub Releases](https://github.com/harshit-zstate/pi/releases). Binaries need no Node.js; the tarballs install together with `npm install -g --ignore-scripts <tarballs...>` and need Node.js 22.19 or newer. `pi update` checks the latest GitHub release.
 
 Start Pi in the directory where you want it to work:
 

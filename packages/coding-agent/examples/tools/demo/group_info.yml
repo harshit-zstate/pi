@@ -1,0 +1,6 @@
+# Group description and guidelines go into the system prompt while any of these tools is active.
+description: Demo tools showing the three impl kinds (in-process, per-call executable, persistent worker).
+guidelines:
+  - Call checkerboard before describing a pattern, then describe what the image shows.
+# Optional: which tool folders to load, in order. Default: every subfolder, sorted.
+tools: [echo, checkerboard, counter]

@@ -3,7 +3,6 @@ import { Type } from "typebox";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import type { ToolDefinition } from "../src/core/extensions/types.ts";
-import { createEditToolDefinition } from "../src/core/tools/edit.ts";
 import { BashExecutionComponent } from "../src/modes/interactive/components/bash-execution.ts";
 import { CompactionSummaryMessageComponent } from "../src/modes/interactive/components/compaction-summary-message.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
@@ -48,22 +47,6 @@ const components: Array<{ name: string; create: (outputPad: number) => OutputPad
 	},
 	{ name: "tool execution", create: (outputPad) => createTool(tool, outputPad) },
 	{ name: "tool execution without a definition", create: (outputPad) => createTool(undefined, outputPad) },
-	{
-		name: "self-rendered edit result",
-		create: (outputPad) => {
-			const component = new ToolExecutionComponent(
-				"edit",
-				"id",
-				{ path: "file.txt", edits: [{ oldText: "old", newText: "new" }] },
-				{ outputPad },
-				createEditToolDefinition("/"),
-				ui,
-				"/",
-			);
-			component.updateResult({ content: [{ type: "text", text: "Could not find old text" }], isError: true });
-			return component;
-		},
-	},
 	{
 		name: "compaction summary",
 		create: (outputPad) =>

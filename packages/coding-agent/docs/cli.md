@@ -111,75 +111,25 @@ Constraints:
 ## Tools
 
 ```sh
-pi --tools read,grep,find,ls --print "Review this project"
+pi --tools-dir ./tools --tools 'view_*' --print "Describe the first series"
 ```
 
-See [Settings](settings.md#tools) for configuring the default tool selection.
+Pi has no built-in tools; tools come from tool folders. See [Tool Folders](tools.md) for the folder format and [Settings](settings.md#tools) for the default selection.
 
+- `--tools-dir <dir>`<br>
+  Loads tools from `<dir>/<group>/<tool>/info.yml`. Repeatable; later directories override earlier ones by tool name.
+- `--no-tool-dirs`<br>
+  Skips the default tool folders (`~/.pi/agent/tools`, `.pi/tools`, `PI_TOOLS_DIR`, and the `toolDirs` setting).
 - `-t`, `--tools <list>`<br>
-  Replaces the default selection with a comma-separated allowlist of built-in, extension, or custom tools. Entries are tool names or patterns where `*` matches any characters. MCP tools are kept unless an entry starts with `mcp__` (see [MCP tools](#mcp-tools)). A list of only `+name` and `-name` entries is not an allowlist; it changes the default selection instead.
+  Replaces the default selection with a comma-separated allowlist of tool-folder, extension, or custom tools. Entries are tool names or patterns where `*` matches any characters. MCP tools are kept unless an entry starts with `mcp__` (see [MCP](mcp.md#control-tool-exposure)). A list of only `+name` and `-name` entries is not an allowlist; it changes the default selection instead.
 - `-xt`, `--exclude-tools <list>`<br>
-  Disables comma-separated tool names or patterns after all other selection options, MCP tools included.
+  Disables comma-separated tool names or patterns after all other selection options.
 - `-nbt`, `--no-builtin-tools`<br>
-  Disables default built-in tools while retaining extension and custom tools.
+  Disables tool-folder tools while retaining extension and custom tools.
 - `-nt`, `--no-tools`<br>
-  Starts with all built-in, extension, custom, and MCP tools disabled.
+  Starts with all tools disabled.
 
-Default enabled tools are `read`, `bash`, `edit`, and `write`, unless `defaultTools` changes them. `--tools` with plain names replaces the whole selection, so name every tool you want. Like `defaultTools`, it also accepts a list of only `+name` and `-name` entries, which adds tools to or removes them from the default selection: `pi --tools +codemode,-write` keeps the other default tools, enables `codemode`, and disables `write`. These entries take exact tool names, not `*` patterns; use `--exclude-tools` to disable tools by pattern. Plain names and `+name`/`-name` entries cannot be mixed. `/reload` enables tools newly added to `defaultTools`, but a tool removed with `-name` stays removed.
-
-<a id="mcp-tools"></a>
-
-`--tools` selects the tools declared to the model. It does not remove MCP tools, whose reach is set by their [exposure](mcp.md#control-tool-exposure): `pi --tools read,codemode` keeps every MCP tool callable from codemode scripts. An MCP tool that no entry names or matches is never declared directly, whatever its exposure; only `tool_search`, if listed, can load it. Once an entry starts with `mcp__`, `--tools` filters MCP tools too, so this keeps only the tools of the `radius` server:
-
-```sh
-pi --tools read,bash,codemode,'mcp__radius__*'
-```
-
-The MCP resource tools (`list_mcp_resources`, `list_mcp_resource_templates`, `read_mcp_resource`) count as MCP tools. To remove MCP tools, use `--exclude-tools 'mcp__*'` or [`--no-mcp`](#resource-options).
-
-| Built-in | Purpose |
-|---|---|
-| `read` | Read text files and supported images |
-| `bash` | Run shell commands |
-| `powershell` | Run PowerShell commands on Windows |
-| `edit` | Apply exact text replacements to an existing file |
-| `write` | Create or overwrite a file |
-| `grep` | Search file contents |
-| `find` | Find paths using glob patterns |
-| `ls` | List directory contents |
-
-Built-in extensions add two more tools. They are off by default; the MCP extension turns them on when an MCP server needs them (see [MCP](mcp.md#exposure)). To enable them yourself, name them in `--tools` or `defaultTools`.
-
-| Built-in extension | Purpose |
-|---|---|
-| `codemode` | Run JavaScript that calls the other tools, for example in parallel with `Promise.allSettled`; only the script's output reaches the model |
-| `tool_search` | Search tools that are not declared to the model (`codemode` and `deferred` exposure, such as MCP tools) and declare the matches for the next call |
-
-### Enable codemode
-
-To turn on `codemode` for every session, add it to the default tools in `~/.pi/agent/settings.json` or a project's `.pi/settings.json`:
-
-```json
-{
-  "defaultTools": ["+codemode"]
-}
-```
-
-This keeps `read`, `bash`, `edit`, and `write` and adds `codemode`. For one invocation, add it with `--tools`:
-
-```sh
-pi --tools +codemode
-```
-
-Codemode is useful without MCP: scripts can run several tool calls in parallel, filter large output before it reaches the model, call classifier models such as TypeSafe's Jev through `models.classify()` (see [Classifier models](models.md#use-classifier-models)), and generate images through `models.generateImages()` (see [Image models](models.md#use-image-models)).
-
-### How codemode works
-
-Scripts run in a QuickJS sandbox and reach the other tools through `tools.<name>(args)`. [Codemode](codemode.md) describes the script API, how tools are listed and found, the `store()` and `models` globals, and the limits.
-
-### Tool search
-
-`tool_search` is off by default; enable it with `"defaultTools": ["+tool_search"]` or `--tools`. It uses the same ranking as `searchTools()` over tools that are not declared yet and declares the matches for the next model call. Loaded tools are recorded in the session like other tool changes, so they stay declared on that branch.
+By default every loaded tool is enabled, except tools with `default_active: false`, unless `defaultTools` changes the selection. `--tools` with plain names replaces the whole selection, so name every tool you want. Like `defaultTools`, it also accepts a list of only `+name` and `-name` entries, which adds tools to or removes them from the default selection: `pi --tools +mark_finding,-view_slice`. These entries take exact tool names, not `*` patterns; use `--exclude-tools` to disable tools by pattern. Plain names and `+name`/`-name` entries cannot be mixed. `/reload` reloads the tool folders and enables tools newly added to `defaultTools`, but a tool removed with `-name` stays removed.
 
 <a id="resource-options"></a>
 
@@ -196,7 +146,7 @@ See [Configuration](configuration.md) for conventional directories and project t
 - `-ne`, `--no-extensions`<br>
   Disables discovered, configured, and built-in extensions. Explicit `-e` paths still load, so `pi -ne -e builtin:mcp` keeps only the built-in MCP support.
 - `--no-mcp`<br>
-  Disables the built-in MCP support for this run: no servers connect, and there are no MCP tools or `/mcp`. It does not affect an extension that replaces the built-in MCP support.
+  Disables the built-in MCP support for this run: no servers connect, and there are no MCP tools or `/mcp`.
 - `--skill <path>`<br>
   Loads a skill file or directory and is repeatable.
 - `-ns`, `--no-skills`<br>
@@ -315,9 +265,10 @@ Authentication commands require `--provider <provider>` or `--model <model>`. Se
 
 Credential-printing commands write secrets to stdout.
 
+
 ## MCP commands
 
-These commands work outside a session, so agents can run them through `bash`. See [MCP Servers](mcp.md).
+These commands work outside a session, so scripts and harnesses can run them. See [MCP Servers](mcp.md).
 
 | Command | Description |
 |---|---|
@@ -328,6 +279,6 @@ These commands work outside a session, so agents can run them through `bash`. Se
 | `pi mcp login <server> [--timeout <seconds>]` | Sign in to an OAuth server: open the authorization page and wait for the browser; a terminal also accepts the pasted redirect URL. `--timeout` limits the whole sign-in, including requests to the authorization server (default 300 seconds) |
 | `pi mcp logout <server>` | Delete the stored OAuth credentials of a server |
 
-`add` and `remove` change `~/.pi/agent/mcp.json`, or `.pi/mcp.json` in the current directory with `--local` (`-l`). `add` also takes `--exposure <mode>` (see [Exposure](mcp.md#exposure)) and `--description <text>` and does not connect; run `pi mcp list` to check the server.
+`add` and `remove` change `~/.pi/agent/mcp.json`, or `.pi/mcp.json` in the current directory with `--local` (`-l`). `add` also takes `--exposure <mode>` (see [Exposure](mcp.md#control-tool-exposure)) and `--description <text>` and does not connect; run `pi mcp list` to check the server.
 
 Project `.pi/mcp.json` files are only read for projects that are already trusted.

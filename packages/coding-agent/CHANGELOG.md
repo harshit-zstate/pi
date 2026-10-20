@@ -2,9 +2,26 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Removed the built-in `read`, `bash`, `powershell`, `edit`, `write`, `grep`, `find`, and `ls` tools and their factories (`createReadTool`, `createCodingTools`, ...). All model tools now come from tool folders, extensions, or SDK `customTools`. The interactive `!` command keeps working; `BashOperations` and `createLocalBashOperations` moved to `core/shell-operations.ts`.
+- Removed the per-tool extension event types and guards (`BashToolCallEvent`, `isReadToolResult`, ...). Use `ToolCallEvent`, `ToolResultEvent`, and `isToolCallEventType<Name, Input>()`.
+- `defaultTools` and `+name`/`-name` tool options now apply to tool-folder tools; `SettingsManager.getDefaultTools()` takes the base selection as an argument.
+- The default system prompt is now domain-neutral and lists tools by group. It no longer includes the pi documentation section or the skills listing.
+- MCP servers now default to `direct` exposure. The `codemode` exposure is gone; `codemode` and `codemode-deferred` in `mcp.json` are read as `deferred` (loaded through `tool_search`). `autoEnableCodemode` is no longer read.
+- Releases are published as GitHub Releases on https://github.com/harshit-zstate/pi (standalone binaries and npm tarballs), not to npm. The update check reads the latest GitHub release, and `pi update` links to it instead of installing.
+
 ### Added
 
+- Added tool folders: `<root>/<group>/<tool>/info.yml` plus an in-process `impl.ts`/`impl.js` or any executable, with per-call or persistent (JSON lines) processes. Tools return text and images by path or base64. Roots: `~/.pi/agent/tools`, `.pi/tools` (trusted projects), `PI_TOOLS_DIR`, the `toolDirs` setting, and `--tools-dir`; `--no-tool-dirs` skips the defaults. See [Tool Folders](docs/tools.md).
+- Added `examples/tools/demo` with one tool of each kind, and a Harbor agent in `integrations/harbor`.
 - Added a Models Configuration reference generated from the `models.json` schema, listing all provider, model, model override, and compatibility fields ([#10790](https://github.com/earendil-works/pi/issues/10790))
+
+### Removed
+
+- Removed the built-in `codemode` extension and the `codemode` settings, and the Radius MCP setup offer after `/login`.
+- Removed the pi.dev install telemetry ping and the pi.dev managed-installer self-update.
+- Removed the extension and SDK examples that wrapped built-in tools (`ssh`, `sandbox`, `gondolin`, `minimal-mode`, `built-in-tool-renderer`, `tool-override`, `truncated-tool`, `bash-spawn-hook`, `preset`, `tools`, `dynamic-tools`, `14-codemode-mcp`).
 
 ### Changed
 

@@ -4,6 +4,7 @@
  * Replace everything - no discovery, explicit configuration.
  */
 
+import { join } from "node:path";
 import { getModel } from "@earendil-works/pi-ai/compat";
 import {
 	createAgentSession,
@@ -39,8 +40,7 @@ const resourceLoader: ResourceLoader = {
 	getPrompts: () => ({ prompts: [], diagnostics: [] }),
 	getThemes: () => ({ themes: [], diagnostics: [] }),
 	getAgentsFiles: () => ({ agentsFiles: [] }),
-	getSystemPrompt: () => `You are a minimal assistant.
-Available: read, bash. Be concise.`,
+	getSystemPrompt: () => "You are a minimal assistant. Use the demo tools. Be concise.",
 	getSystemPromptSource: () => undefined,
 	getAppendSystemPrompt: () => [],
 	getAppendSystemPromptSources: () => [],
@@ -55,7 +55,8 @@ const { session } = await createAgentSession({
 	thinkingLevel: "off",
 	modelRuntime,
 	resourceLoader,
-	tools: ["read", "bash"],
+	toolDirs: [join(import.meta.dirname, "../tools")],
+	defaultToolDirs: false,
 	sessionManager: SessionManager.inMemory(cwd),
 	settingsManager,
 });

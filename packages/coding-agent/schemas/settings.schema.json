@@ -380,6 +380,13 @@
       },
       "description": "Local theme file paths or directories."
     },
+    "toolDirs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tool folder roots, each holding <group>/<tool>/info.yml. Loaded after the default roots."
+    },
     "enableSkillCommands": {
       "type": "boolean",
       "description": "Register skills as /skill:name commands.",
@@ -603,31 +610,6 @@
         "anthropicExtraUsage": {
           "type": "boolean",
           "default": true
-        }
-      }
-    },
-    "codemode": {
-      "type": "object",
-      "properties": {
-        "mode": {
-          "anyOf": [
-            {
-              "type": "string",
-              "const": "on"
-            },
-            {
-              "type": "string",
-              "const": "only"
-            }
-          ],
-          "description": "How codemode presents tools. \"on\" keeps direct tools declared and annotates tools callable from scripts; codemode lists only tools without direct exposure. \"only\" lists every script-callable tool in codemode and does not declare active direct tools.",
-          "default": "on"
-        },
-        "inlineBudget": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Estimated tokens available for inline codemode tool declarations.",
-          "default": 3000
         }
       }
     },

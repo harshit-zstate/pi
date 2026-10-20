@@ -11,7 +11,7 @@ name: Nix
 #
 # Release tags are built exactly as tagged, with their committed pin. Once all
 # systems build, the stable branch is fast-forwarded to the tag so that
-# `nix run github:earendil-works/pi/stable` runs the latest release.
+# `nix run github:harshit-zstate/pi/stable` runs the latest release.
 
 on:
   push:
@@ -29,11 +29,6 @@ on:
       - 'packages/coding-agent/install-lock/**'
       - 'packages/ai/scripts/hydrate-model-catalog.ts'
       - 'scripts/update-model-catalog-pin.mjs'
-  workflow_run:
-    workflows:
-      - Publish Model Catalog
-    types:
-      - completed
   # Catches packaging drift from changes pushed to main without a pull request.
   schedule:
     - cron: '43 5 * * *'

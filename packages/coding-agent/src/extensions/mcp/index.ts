@@ -4,16 +4,11 @@
  * Connects the servers from `mcp.json` and the servers extensions register with
  * `pi.registerMcpServer()` when a session starts, and servers registered later right away. A server
  * in `mcp.json` takes precedence over a registered server of the same name. Connections run in the
- * background: the first prompt waits only for servers with `direct` tools, and codemode scripts,
- * `tool_search`, and the resource tools wait for the servers they need when they run. Tools are
- * registered as `mcp__<server>__<tool>`. By default (`"exposure": "codemode"`) the tools are only
- * callable from codemode scripts, which keeps MCP tools out of the model's tool declarations and
- * the codemode description: scripts find the tools with `searchTools()` and the server instructions
- * with `describeNamespace()`. The codemode tool is activated for that unless `autoEnableCodemode` is
- * false. `"deferred"` declares the tools to the model once the `tool_search` tool loads them, and
- * activates `tool_search` instead of codemode.
- * `"exposure": "direct"` declares them to the model right away, and `"hidden"` makes them
- * unreachable. `toolExposure` overrides the exposure of single tools. Servers with resources are
+ * background: the first prompt waits only for servers with `direct` tools, and `tool_search` and
+ * the resource tools wait for the servers they need when they run. Tools are registered as
+ * `mcp__<server>__<tool>`. By default (`"exposure": "direct"`) they are declared to the model right
+ * away. `"deferred"` keeps them out of the declarations until the `tool_search` tool loads them, and
+ * activates `tool_search`. `"hidden"` makes them unreachable. `toolExposure` overrides the exposure of single tools. Servers with resources are
  * reached through Codex's `list_mcp_resources`, `list_mcp_resource_templates`, and
  * `read_mcp_resource` tools (resources.ts).
  *
@@ -40,7 +35,6 @@ import type {
 import { mcpNamespace } from "../../core/mcp-servers.ts";
 import type { ModelRegistry } from "../../core/model-registry.ts";
 import { openBrowser } from "../../utils/open-browser.ts";
-import { CODEMODE_TOOL_NAME } from "../codemode/tool.ts";
 import { TOOL_SEARCH_TOOL_NAME } from "../tool-search/tool.ts";
 import {
 	getMcpToolExposure,
@@ -85,7 +79,7 @@ export interface McpExtensionOptions {
 	/**
 	 * How long the first prompt waits for servers with `direct` tools that are still connecting at
 	 * startup, in milliseconds. Their tools become available when they connect. Other servers are
-	 * waited for when a script or search needs them. Default: 10000.
+	 * waited for when a tool that reaches them, such as tool_search, runs. Default: 10000.
 	 */
 	startupWaitMs?: number;
 }
@@ -115,8 +109,7 @@ interface McpServer {
 }
 
 const EXPOSURE_DESCRIPTIONS: Record<Exclude<McpExposure, "hidden">, string> = {
-	codemode: "called from codemode scripts, which find them with searchTools()",
-	deferred: "not declared until tool_search loads them, then called directly; no codemode needed",
+	deferred: "not declared until tool_search loads them, then called directly",
 	direct: "declared to the model like built-in tools",
 };
 
@@ -133,7 +126,7 @@ function isEnabled(server: Pick<McpServer, "entry">): boolean {
 }
 
 function exposureOf(entry: McpServerEntry): McpExposure {
-	return entry.config.exposure ?? "codemode";
+	return entry.config.exposure ?? "direct";
 }
 
 /** Exposures the server's tools can have, known from its config before it connects. */
@@ -146,10 +139,9 @@ function hasDirectTools(entry: McpServerEntry): boolean {
 	return configuredExposures(entry).has("direct");
 }
 
-/** Whether some of the server's tools are reached through codemode or tool_search. */
+/** Whether some of the server's tools are reached through tool_search. */
 function hasIndirectTools(entry: McpServerEntry): boolean {
-	const exposures = configuredExposures(entry);
-	return exposures.has("codemode") || exposures.has("deferred");
+	return configuredExposures(entry).has("deferred");
 }
 
 /** Name of the system prompt section that lists the servers whose tools are not declared. */
@@ -162,13 +154,8 @@ const MAX_SERVER_DESCRIPTION_CHARS = 250;
  */
 export const MAX_SERVERS_SECTION_CHARS = 4096;
 
-/** The section's first line. It explains only the ways of reaching tools that the listed servers use. */
-function serversSectionIntro(reaches: ReadonlySet<string>): string {
-	let intro = "MCP servers whose tools are not declared to you.";
-	if (reaches.has("codemode")) intro += " Call the tools of `codemode` servers from codemode scripts.";
-	if (reaches.has("tool_search")) intro += " Load the tools of `tool_search` servers with `tool_search`.";
-	return intro;
-}
+const SERVERS_SECTION_INTRO =
+	"MCP servers whose tools are not declared to you. Load the tools of `tool_search` servers with `tool_search`.";
 
 function truncate(text: string, max: number): string {
 	if (text.length <= max) return text;
@@ -188,22 +175,19 @@ function serverSummary(server: McpServerListing): string {
 }
 
 /**
- * The `mcp_servers` section: every enabled server with codemode or deferred tools, with how its
- * tools are reached and a one-line summary. The model learns of the servers from it, since neither
- * codemode nor tool_search lists them. Undefined when there are no such servers.
+ * The `mcp_servers` section: every enabled server with deferred tools, with how its tools are
+ * reached and a one-line summary. The model learns of the servers from it, since tool_search does
+ * not list them. Undefined when there are no such servers.
  */
 export function renderServersSection(servers: readonly McpServerListing[]): string | undefined {
 	const listed = servers
 		.filter((server) => isEnabled(server) && hasIndirectTools(server.entry))
 		.sort((a, b) => a.entry.name.localeCompare(b.entry.name));
 	if (listed.length === 0) return undefined;
-	const reaches = listed.map((server) =>
-		configuredExposures(server.entry).has("codemode") ? "codemode" : "tool_search",
-	);
-	const intro = serversSectionIntro(new Set(reaches));
-	const heads = listed.map((server, index) => `- ${mcpNamespace(server.entry.name)} (${reaches[index]})`);
+	const intro = SERVERS_SECTION_INTRO;
+	const heads = listed.map((server) => `- ${mcpNamespace(server.entry.name)} (tool_search)`);
 	const omitted = (count: number) =>
-		count > 0 ? [`- … ${count} more server${count === 1 ? "" : "s"}; find their tools with searchTools()`] : [];
+		count > 0 ? [`- … ${count} more server${count === 1 ? "" : "s"}; load their tools with tool_search`] : [];
 	// Characters of the intro, the first `kept` server lines without descriptions, and the omission line.
 	const size = (kept: number) => [intro, ...heads.slice(0, kept), ...omitted(listed.length - kept)].join("\n").length;
 	let kept = listed.length;
@@ -286,8 +270,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 		let projectConfig: string | undefined;
 		/** Registered servers that `mcp.json` overrides, shown in `/mcp`. */
 		let overridden: string[] = [];
-		let autoEnableCodemode = true;
-		/** Whether the "codemode tools unreachable" warning was shown since the session started. */
+		/** Whether the "deferred tools unreachable" warning was shown since the session started. */
 		let warnedUnreachable = false;
 		let pending: Promise<unknown> | undefined;
 		/** Whether a prompt already waited for the startup connections since the session started. */
@@ -390,7 +373,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			const description = entry.config.description?.trim();
 			const namespace = {
 				name: mcpNamespace(server),
-				// `describeNamespace("docs")` finds `mcp__docs`.
+				// The server name is an alias of the namespace: `docs` names `mcp__docs`.
 				aliases: [server],
 				...(description ? { description } : {}),
 				...(connection.instructions ? { instructions: connection.instructions } : {}),
@@ -479,7 +462,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 		 */
 		const syncResourceTools = () => {
 			const exposures = new Set(serversWithResources().map((server) => exposureOf(server.entry)));
-			const exposure = (["direct", "codemode", "deferred"] as const).find((candidate) => exposures.has(candidate));
+			const exposure = (["direct", "deferred"] as const).find((candidate) => exposures.has(candidate));
 			const next = exposure ?? "hidden";
 			if (next === resourceToolsExposure || (resourceToolsExposure === undefined && next === "hidden")) return;
 			const wasDirect = resourceToolsExposure === "direct";
@@ -492,12 +475,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			}
 		};
 
-		/**
-		 * Tools that are not declared to the model are reached through the codemode tool (scripts call
-		 * them) or the tool_search tool (it declares them). Either reaches every such tool. Activate the
-		 * one the tools' exposure asks for: codemode for `codemode` unless `autoEnableCodemode` is false,
-		 * tool_search for `deferred`.
-		 */
+		/** Tools that are not declared to the model are reached through tool_search, which declares them. */
 		const ensureDiscoveryActive = (ctx: ExtensionContext) => {
 			// From the config, so the tool is active before the servers connect. Resource tools share
 			// their server's exposure.
@@ -505,32 +483,21 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			for (const server of servers) {
 				if (isEnabled(server)) for (const exposure of configuredExposures(server.entry)) exposures.add(exposure);
 			}
-			const needsCodemode = exposures.has("codemode");
-			const needsToolSearch = exposures.has("deferred");
-			if (!needsCodemode && !needsToolSearch) return;
-			// Only a tool of these names that declares `reachesTools` can reach MCP tools; another
+			if (!exposures.has("deferred")) return;
+			// Only a tool of this name that declares `reachesTools` can reach MCP tools; another
 			// extension's tool of the same name without it is never activated.
-			const tools = pi.getAllTools();
-			const hasReachingTool = (name: string) => tools.some((tool) => tool.name === name && tool.reachesTools);
-			const hasCodemode = hasReachingTool(CODEMODE_TOOL_NAME);
-			const hasToolSearch = hasReachingTool(TOOL_SEARCH_TOOL_NAME);
+			const hasToolSearch = pi
+				.getAllTools()
+				.some((tool) => tool.name === TOOL_SEARCH_TOOL_NAME && tool.reachesTools);
 			const active = pi.getActiveTools();
-			const activate: string[] = [];
-			if (needsCodemode && hasCodemode && autoEnableCodemode && !active.includes(CODEMODE_TOOL_NAME)) {
-				activate.push(CODEMODE_TOOL_NAME);
+			if (hasToolSearch && !active.includes(TOOL_SEARCH_TOOL_NAME)) {
+				pi.setActiveTools([...active, TOOL_SEARCH_TOOL_NAME]);
 			}
-			if (needsToolSearch && hasToolSearch && !active.includes(TOOL_SEARCH_TOOL_NAME)) {
-				activate.push(TOOL_SEARCH_TOOL_NAME);
-			}
-			if (activate.length > 0) pi.setActiveTools([...active, ...activate]);
-			const reachable = [...active, ...activate];
-			if (hasCodemode && reachable.includes(CODEMODE_TOOL_NAME)) return;
-			if (hasToolSearch && reachable.includes(TOOL_SEARCH_TOOL_NAME)) return;
+			if (hasToolSearch) return;
 			if (warnedUnreachable) return;
 			warnedUnreachable = true;
-			const reason = needsCodemode && hasCodemode && !autoEnableCodemode ? " (autoEnableCodemode is false)" : "";
 			ctx.ui.notify(
-				`MCP tools are only reachable from the codemode or tool_search tool, but neither is active${reason}; they cannot be called.`,
+				"Deferred MCP tools are only reachable from the tool_search tool, but it is not registered; they cannot be called.",
 				"warning",
 			);
 		};
@@ -1115,7 +1082,6 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			const loaded = (options.loadConfig ?? defaultLoadConfig)(ctx);
 			configErrors = loaded.errors;
 			projectConfig = loaded.projectConfig;
-			autoEnableCodemode = loaded.autoEnableCodemode ?? true;
 			warnedUnreachable = false;
 			waitedForStartup = false;
 			sessionCwd = ctx.cwd;
@@ -1127,8 +1093,8 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			overridden = registered.overridden;
 			servers = [...loaded.servers.map((entry) => ({ entry })), ...registered.servers];
 			emitChange();
-			// Codemode or tool_search is activated from the config: the first prompt does not wait for
-			// servers whose tools are not declared to the model, and scripts or searches wait for them.
+			// tool_search is activated from the config: the first prompt does not wait for servers whose
+			// tools are not declared to the model, and searches wait for them.
 			ensureDiscoveryActive(ctx);
 			const enabled = servers.filter(isEnabled);
 			if (enabled.length === 0) {
@@ -1152,7 +1118,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 
 		// The first prompt waits for servers whose tools are declared to the model, so they are declared
 		// in its first request, but not indefinitely: a slow or hanging server must not hold up the
-		// prompt. Other servers are waited for when a script or search needs them (below).
+		// prompt. Other servers are waited for when a tool that reaches them runs (below).
 		const waitForDirectServers = async (ctx: ExtensionContext) => {
 			if (waitedForStartup) return;
 			waitedForStartup = true;
@@ -1184,8 +1150,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 		});
 
 		// A tool that reaches other tools (`reachesTools`) waits for the servers it may reach, so their
-		// tools are registered before it runs: a codemode script for the servers it names, or for every
-		// server when it searches or enumerates tools, and tool_search for every server. The resource
+		// tools are registered before it runs: tool_search waits for every server. The resource
 		// tools reach every server, so they wait for all of them. Direct MCP calls wait only for their
 		// own server, including a reconnect still closing its old transport.
 		pi.on("tool_call", async (event, ctx) => {

@@ -1,9 +1,8 @@
 /**
- * Tool discovery: a BM25 ranker over tool metadata, shared by `searchTools()` in codemode scripts and
- * the optional `tool_search` tool.
+ * Tool discovery: a BM25 ranker over tool metadata, used by the optional `tool_search` tool.
  *
- * `tool_search` searches tools that are not declared to
- * the model (`codemode` and `deferred` exposure) and loads the matches, so they are declared for the
+ * `tool_search` searches tools that are not declared to the model (`deferred` exposure, and
+ * `codemode` exposure of extension tools) and loads the matches, so they are declared for the
  * next model call. Loading goes through the active tool set, so it is recorded in the transcript
  * like any other tool change and survives `/tree`, resume, and fork on that branch.
  */
@@ -223,7 +222,7 @@ export function createToolSearchToolDefinition(
 		description: TOOL_SEARCH_DESCRIPTION,
 		promptSnippet: "Search for tools that are not loaded yet and load the matches",
 		parameters: toolSearchSchema,
-		// Searching is not something scripts need; it changes what the model sees.
+		// Searching changes what the model sees, so other tools cannot call it.
 		exposure: "model-only",
 		// A query can match any tool that is not declared yet.
 		reachesTools: () => "all",

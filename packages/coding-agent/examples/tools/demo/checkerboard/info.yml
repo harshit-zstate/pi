@@ -1,0 +1,12 @@
+description: Draw a checkerboard PNG.
+parameters:
+  type: object
+  properties:
+    cells: { type: integer, minimum: 2, maximum: 32, description: Cells per side }
+  required: [cells]
+output:
+  description: A caption and the PNG image.
+# Executable impl: a fresh process per call. stdin gets {"input", "callId", "cwd", "toolDir"};
+# stdout returns the result as JSON (or plain text). A non-zero exit is an error with stderr as text.
+command: ["node", "render.cjs"]
+timeout_ms: 10000

@@ -25,7 +25,7 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).toContain("<tools>\n(none)\n");
 		});
 
-		test("shows file paths guideline even with no tools", () => {
+		test("shows the generic guideline even with no tools", () => {
 			const prompt = buildSystemPrompt({
 				selectedTools: [],
 				contextFiles: [],
@@ -33,7 +33,7 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).toContain("Show file paths clearly");
+			expect(prompt).toContain("<rules>\n- Be concise in your responses\n</rules>");
 		});
 	});
 
@@ -48,7 +48,9 @@ describe("buildSystemPrompt", () => {
 				skills: [],
 			});
 
-			expect(defaultPrompt.startsWith("You are an expert coding assistant operating inside pi")).toBe(true);
+			expect(defaultPrompt.startsWith("You are an agent that completes tasks using only the tools provided.")).toBe(
+				true,
+			);
 			expect(customPrompt.startsWith("You are Exact.\n\n<cwd>")).toBe(true);
 		});
 
@@ -74,51 +76,24 @@ describe("buildSystemPrompt", () => {
 		});
 	});
 
-	describe("default tools", () => {
-		test("includes all default tools when snippets are provided", () => {
+	describe("tool list", () => {
+		test("lists selected tools that have snippets", () => {
 			const prompt = buildSystemPrompt({
-				toolSnippets: {
-					read: "Read file contents",
-					bash: "Execute bash commands",
-					edit: "Make surgical edits",
-					write: "Create or overwrite files",
-				},
+				selectedTools: ["view_slice", "mark_finding"],
+				toolSnippets: { view_slice: "Render a slice", mark_finding: "Mark a finding" },
 				contextFiles: [],
 				skills: [],
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).toContain("- read:");
-			expect(prompt).toContain("- bash:");
-			expect(prompt).toContain("- edit:");
-			expect(prompt).toContain("- write:");
+			expect(prompt).toContain("<tools>\n- view_slice: Render a slice\n- mark_finding: Mark a finding\n</tools>");
 		});
 
-		test.each([
-			[["powershell"], "Use PowerShell for file operations"],
-			[["bash", "powershell"], "Use bash or PowerShell for file operations"],
-		] as const)("uses shell-specific guidance for %j", (selectedTools, expected) => {
-			const prompt = buildSystemPrompt({
-				selectedTools: [...selectedTools],
-				contextFiles: [],
-				skills: [],
-				cwd: process.cwd(),
-			});
+		test("does not mention pi docs or coding tools", () => {
+			const prompt = buildSystemPrompt({ contextFiles: [], skills: [], cwd: process.cwd() });
 
-			expect(prompt).toContain(expected);
-		});
-
-		test("instructs models to resolve pi docs and examples under absolute base paths", () => {
-			const prompt = buildSystemPrompt({
-				contextFiles: [],
-				skills: [],
-				cwd: process.cwd(),
-			});
-
-			expect(prompt).toContain(
-				"- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory",
-			);
-			expect(prompt).toContain("environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md)");
+			expect(prompt).not.toContain("<docs>");
+			expect(prompt).not.toContain("bash");
 		});
 	});
 
@@ -176,27 +151,9 @@ describe("buildSystemPrompt", () => {
 	});
 
 	describe("skills", () => {
-		test.each([
-			{ name: "default prompt", customPrompt: undefined },
-			{ name: "custom prompt", customPrompt: "Custom system prompt" },
-		])("includes skills with only bash in the $name", ({ customPrompt }) => {
+		test("does not list skills: no built-in tool reads them", () => {
 			const prompt = buildSystemPrompt({
-				customPrompt,
-				selectedTools: ["bash"],
-				contextFiles: [],
-				skills: [testSkill],
-				cwd: process.cwd(),
-			});
-
-			expect(prompt).toContain("<skills>");
-			expect(prompt).toContain("<available_skills>");
-			expect(prompt).toContain("<name>test-skill</name>");
-			expect(prompt).toContain("Use bash to load a skill's file");
-		});
-
-		test("omits skills without read or bash", () => {
-			const prompt = buildSystemPrompt({
-				selectedTools: ["write"],
+				selectedTools: ["read", "bash"],
 				contextFiles: [],
 				skills: [testSkill],
 				cwd: process.cwd(),
@@ -225,14 +182,7 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).toContain("<tools>\n- run: Run a task\n");
 			expect(prompt).not.toContain("- read: ");
 			expect(prompt).not.toContain("Use read for files.");
-			expect(prompt).not.toContain("Use bash for file operations");
 			expect(prompt).toContain("- Prefer run.");
-		});
-
-		test("keeps skills without naming a hidden reader", () => {
-			expect(build(["read", "bash"])).toContain("\nLoad a skill's file when the task matches its description.");
-			expect(build(["read"])).toContain("Use bash to load a skill's file");
-			expect(build([])).toContain("Use the read tool to load a skill's file");
 		});
 	});
 });

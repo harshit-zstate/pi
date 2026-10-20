@@ -282,10 +282,11 @@ describe("parseArgs", () => {
 		});
 	});
 
-	describe("--no-mcp flag", () => {
-		test("parses --no-mcp flag", () => {
-			const result = parseArgs(["--no-mcp"]);
-			expect(result.noMcp).toBe(true);
+	describe("tool folder flags", () => {
+		test("parses repeated --tools-dir and --no-tool-dirs", () => {
+			const result = parseArgs(["--tools-dir", "a", "--tools-dir", "b", "--no-tool-dirs"]);
+			expect(result.toolDirs).toEqual(["a", "b"]);
+			expect(result.noToolDirs).toBe(true);
 			expect(result.unknownFlags.size).toBe(0);
 		});
 	});

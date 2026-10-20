@@ -1,0 +1,9 @@
+description: Echo text back, optionally upper-cased.
+parameters:
+  type: object
+  properties:
+    text: { type: string, description: Text to echo }
+    upper: { type: boolean, description: Upper-case the text }
+  required: [text]
+output:
+  description: The text.

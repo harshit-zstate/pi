@@ -63,7 +63,6 @@ export type {
 	AgentToolUpdateCallback,
 	AppKeybinding,
 	AutocompleteProviderFactory,
-	BashToolCallEvent,
 	BeforeAgentStartCustomEvent,
 	BeforeAgentStartEvent,
 	BeforeAgentStartEventResult,
@@ -87,7 +86,6 @@ export type {
 	CustomEntryDraft,
 	CustomMessageEntryDraft,
 	CustomToolCallEvent,
-	EditToolCallEvent,
 	EntryRenderer,
 	EntryRenderOptions,
 	ExecOptions,
@@ -112,15 +110,12 @@ export type {
 	ExtensionUIDialogOptions,
 	ExtensionVirtualModel,
 	ExtensionWidgetOptions,
-	FindToolCallEvent,
-	GrepToolCallEvent,
 	InlineExtension,
 	InputEvent,
 	InputEventResult,
 	InputSource,
 	KeybindingsManager,
 	LoadExtensionsResult,
-	LsToolCallEvent,
 	MarkdownTransformContext,
 	MarkdownTransformer,
 	McpServersChangeEvent,
@@ -133,7 +128,6 @@ export type {
 	ModelSelectEvent,
 	ModelSelectSource,
 	NormalizedBuildSystemPromptOptions,
-	PowerShellToolCallEvent,
 	ProjectTrustContext,
 	ProjectTrustEvent,
 	ProjectTrustEventDecision,
@@ -142,7 +136,6 @@ export type {
 	ProviderConfig,
 	ProviderModelConfig,
 	ProviderStreamEvent,
-	ReadToolCallEvent,
 	RegisteredCommand,
 	RegisteredTool,
 	ResolvedCommand,
@@ -196,28 +189,19 @@ export type {
 	UserBashEventResult,
 	WidgetPlacement,
 	WorkingIndicatorOptions,
-	WriteToolCallEvent,
 } from "./core/extensions/index.ts";
 export {
 	createExtensionRuntime,
 	defineTool,
 	discoverAndLoadExtensions,
 	ExtensionRunner,
-	isBashToolResult,
-	isEditToolResult,
-	isFindToolResult,
-	isGrepToolResult,
-	isLsToolResult,
-	isPowerShellToolResult,
-	isReadToolResult,
 	isToolCallEventType,
-	isWriteToolResult,
 	wrapRegisteredTool,
 	wrapRegisteredTools,
 } from "./core/extensions/index.ts";
 // Footer data provider (git branch + extension statuses - data not otherwise available to extensions)
 export type { ReadonlyFooterDataProvider } from "./core/footer-data-provider.ts";
-export type { RegisteredMcpServer } from "./core/mcp-servers.ts";
+export type { McpServerConfig, RegisteredMcpServer } from "./core/mcp-servers.ts";
 export { convertToLlm } from "./core/messages.ts";
 export { ModelRegistry } from "./core/model-registry.ts";
 export {
@@ -262,17 +246,6 @@ export {
 	createAgentSessionFromServices,
 	createAgentSessionRuntime,
 	createAgentSessionServices,
-	createBashTool,
-	// Tool factories (for custom cwd)
-	createCodingTools,
-	createEditTool,
-	createFindTool,
-	createGrepTool,
-	createLsTool,
-	createPowerShellTool,
-	createReadOnlyTools,
-	createReadTool,
-	createWriteTool,
 	type PromptTemplate,
 } from "./core/sdk.ts";
 export {
@@ -320,6 +293,7 @@ export {
 	type SettingsManagerCreateOptions,
 	type TuiMode,
 } from "./core/settings-manager.ts";
+export { type BashOperations, createLocalBashOperations } from "./core/shell-operations.ts";
 // Skills
 export {
 	formatSkillsForPrompt,
@@ -331,64 +305,34 @@ export {
 	type SkillFrontmatter,
 } from "./core/skills.ts";
 export { createSyntheticSourceInfo } from "./core/source-info.ts";
-export { type EditDiffResult, generateDiffString, generateUnifiedPatch } from "./core/tools/edit-diff.ts";
+// Tool folders
+export {
+	ENV_TOOLS_DIR,
+	GROUP_INFO_FILE,
+	type LoadedFolderTool,
+	loadToolFolders,
+	normalizeToolOutput,
+	resolveToolFolderRoots,
+	TOOL_INFO_FILE,
+	type ToolFolderInfo,
+	type ToolFolderLoadResult,
+	ToolFolderRuntime,
+	type ToolGroupInfo,
+	type ToolImpl,
+	type ToolImplContext,
+	type ToolImplFunction,
+	type ToolRuntime,
+} from "./core/tool-folders/index.ts";
 // Tools
 export {
-	type BashOperations,
-	type BashSpawnContext,
-	type BashSpawnHook,
-	type BashToolDetails,
-	type BashToolInput,
-	type BashToolOptions,
-	createBashToolDefinition,
-	createEditToolDefinition,
-	createFindToolDefinition,
-	createGrepToolDefinition,
-	createLocalBashOperations,
-	createLocalPowerShellOperations,
-	createLsToolDefinition,
-	createPowerShellToolDefinition,
-	createReadToolDefinition,
-	createWriteToolDefinition,
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
-	type EditOperations,
-	type EditToolDetails,
-	type EditToolInput,
-	type EditToolOptions,
-	type FindOperations,
-	type FindToolDetails,
-	type FindToolInput,
-	type FindToolOptions,
 	formatSize,
-	type GrepOperations,
-	type GrepToolDetails,
-	type GrepToolInput,
-	type GrepToolOptions,
-	type LsOperations,
-	type LsToolDetails,
-	type LsToolInput,
-	type LsToolOptions,
-	type PowerShellOperations,
-	type PowerShellSpawnContext,
-	type PowerShellSpawnHook,
-	type PowerShellToolDetails,
-	type PowerShellToolInput,
-	type PowerShellToolOptions,
-	type ReadOperations,
-	type ReadToolDetails,
-	type ReadToolInput,
-	type ReadToolOptions,
-	type ToolsOptions,
 	type TruncationOptions,
 	type TruncationResult,
 	truncateHead,
 	truncateLine,
 	truncateTail,
-	type WriteOperations,
-	type WriteToolInput,
-	type WriteToolOptions,
-	withFileMutationQueue,
 } from "./core/tools/index.ts";
 export { formatReadLineRange } from "./core/tools/render-utils.ts";
 export {
@@ -407,9 +351,7 @@ export {
 	type VirtualModelStateData,
 } from "./core/virtual-models.ts";
 // Built-in extensions. The CLI loads them; SDK sessions add them to their extension factories.
-export { type CodemodeExtensionOptions, createCodemodeExtension } from "./extensions/codemode/index.ts";
-export type { CodemodeStoreEntryData, CodemodeToolDetails } from "./extensions/codemode/tool.ts";
-export type { LoadedMcpConfig, McpExposure, McpServerConfig, McpServerEntry } from "./extensions/mcp/config.ts";
+export type { LoadedMcpConfig, McpExposure, McpServerEntry } from "./extensions/mcp/config.ts";
 export { createMcpExtension, type McpExtensionOptions, type McpTransportFactory } from "./extensions/mcp/index.ts";
 export { createToolSearchExtension } from "./extensions/tool-search/index.ts";
 // Main entry point
